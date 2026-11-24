@@ -11,6 +11,8 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const params = new URLSearchParams(location.search);
   const nl = s => esc(s).replace(/\n/g, "<br>");
+  /* 문장 줄 나눔 — "\n" 또는 배열을 문장 한 줄(.ln)로 */
+  const lines = s => (Array.isArray(s) ? s : String(s ?? "").split("\n")).map(l => `<span class="ln">${esc(l)}</span>`).join("");
 
   let SITE, HOME, MENU;
   const byId = id => MENU.find(m => m.id === id);
@@ -158,13 +160,13 @@
       </div></div></section>
       <section class="sec"><div class="wrap story">
         <div class="art">${st.image ? `<img src="${esc(st.image)}" alt="혜화담 우유앙금효소떡 세트" loading="lazy">` : ICON.rice}</div>
-        <div><div class="eyebrow">${esc(st.eyebrow)}</div><h2>${esc(st.title)}</h2><p>${esc(st.text)}</p><a class="btn" href="${esc(st.link)}">혜화담 이야기</a></div>
+        <div><div class="eyebrow">${esc(st.eyebrow)}</div><h2>${esc(st.title)}</h2><p>${lines(st.text)}</p><a class="btn" href="${esc(st.link)}">혜화담 이야기</a></div>
       </div></section>
       <section class="sec cream"><div class="wrap">
         <div class="sec-head"><div><h2>${esc(catOf("bingsu").name)}</h2><p>${esc(catOf("bingsu").sub)}</p></div><a class="more" href="menu.html?cat=bingsu">빙수 전체 →</a></div>
         <div class="grid">${MENU.filter(m => m.cat === "bingsu").slice(0, 8).map(card).join("")}</div></div></section>
       <section class="band"><div class="wrap">
-        <div><div class="eyebrow">${esc(go.eyebrow)}</div><h2>${esc(go.title)}</h2><p>${esc(go.text)}</p>
+        <div><div class="eyebrow">${esc(go.eyebrow)}</div><h2>${esc(go.title)}</h2><p>${lines(go.text)}</p>
           <a class="btn light" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 문의 ${esc(SITE.store.tel)}</a></div>
         <div class="grid">${pick(go.pick)}</div></div></section>
       <section class="sec"><div class="wrap info-grid" style="padding-block:0">
@@ -276,30 +278,31 @@
   /* ---------- 페이지: 매장 안내 · 소개 · 체험 ---------- */
   function pageStore() {
     return subTop("매장 안내", [{ name: "매장 안내" }]) + `<div class="wrap info-grid">${mapCard()}<div>${infoList()}
-      <div class="cta" style="margin-top:28px;text-align:left;padding:24px"><p style="font-size:15px">떡 택배 · 답례품 · 단체 주문은 전화나 인스타그램 DM으로 문의해 주세요.</p>
+      <div class="cta" style="margin-top:28px;text-align:left;padding:24px"><p style="font-size:15px">${lines(["떡 택배 · 답례품 · 단체 주문은", "전화나 인스타그램 DM으로 문의해 주세요."])}</p>
       <div class="btns" style="justify-content:flex-start"><a class="btn primary" href="${telHref(SITE.store.tel)}">${UI.phone} 전화하기</a><a class="btn" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">${UI.insta} 인스타그램</a></div></div>
     </div></div>`;
   }
+  const step = (n, title, text) => `<div><b>${n} · ${title}</b><p>${lines(text)}</p></div>`;
   function pageAbout() {
     return subTop("혜화담 이야기", [{ name: "혜화담 이야기" }]) + `<div class="wrap"><article class="prose">
-      <p class="lead">혜화담은<br>'은혜로운 강화를 담다'라는 뜻입니다.</p>
-      <p>강화는 섬이라는 땅, 바다에서 불어오는 해풍, 큰 일교차 덕분에 농산물이 맛있게 자라는 곳입니다. 혜화담은 그 강화의 맛을 건강하게 즐길 수 있는 공간을 만들고 싶어 문을 열었습니다.</p>
+      <p class="lead">${lines(["혜화담은", "'은혜로운 강화를 담다'라는 뜻입니다."])}</p>
+      <p>${lines(["강화는 섬이라는 땅, 바다에서 불어오는 해풍, 큰 일교차 덕분에", "농산물이 맛있게 자라는 곳입니다.", "혜화담은 그 강화의 맛을 건강하게 즐길 수 있는 공간을 만들고 싶어 문을 열었습니다."])}</p>
       <h2>4대째 이어 온 쌀로 빚는 떡</h2>
-      <p>혜화담의 떡은 1926년부터 4대째 강화에서 농사짓고 쌀을 도정해 온 집안의 강화섬쌀로 만듭니다. 쌀을 키우는 일부터 떡을 빚어 손님께 내기까지 모두 직접 하기 때문에, 무엇이 들어갔는지 솔직하게 말씀드릴 수 있어요.</p>
-      <div class="steps"><div><b>01 · 쌀</b><p>가족이 강화에서 직접 농사짓고 도정한 강화섬쌀</p></div><div><b>02 · 효소</b><p>소화를 돕는 효소를 넣어 먹고 나서도 속 편하게</p></div><div><b>03 · 무첨가</b><p>첨가물과 방부제를 넣지 않아요</p></div></div>
+      <p>${lines(["혜화담의 떡은 1926년부터 4대째 강화에서 농사짓고 쌀을 도정해 온", "집안의 강화섬쌀로 만듭니다.", "쌀을 키우는 일부터 떡을 빚어 손님께 내기까지 모두 직접 하기에,", "무엇이 들어갔는지 솔직하게 말씀드릴 수 있어요."])}</p>
+      <div class="steps">${step("01", "쌀", ["가족이 강화에서 직접", "농사짓고 도정한 강화섬쌀"])}${step("02", "효소", ["소화를 돕는 효소를 넣어", "먹고 나서도 속 편하게"])}${step("03", "무첨가", ["첨가물과 방부제를", "넣지 않아요"])}</div>
       <h2>강화의 계절을 담은 빙수</h2>
-      <p>메론, 망고, 복숭아, 수박, 무화과처럼 싱싱한 생과일을 듬뿍 올린 빙수를 만듭니다. 매장에서 드셔도 좋고, 포장도 가능합니다.</p>
+      <p>${lines(["메론, 망고, 복숭아, 수박, 무화과처럼", "싱싱한 생과일을 듬뿍 올린 빙수를 만듭니다.", "매장에서 드셔도 좋고, 포장도 가능합니다."])}</p>
       <h2>지역과 함께 자라는 가게</h2>
-      <p>강화의 역사 이야기와 함께하는 떡 체험 클래스로 지역 아이들과 여행객을 만나고, 강화의 청년 농부들과 함께 새로운 메뉴를 준비하고 있습니다. 혜화담은 '농업과 일상, 사람'이 이어지는 강화의 로컬 브랜드가 되고자 합니다.</p>
+      <p>${lines(["강화의 역사 이야기와 함께하는 떡 체험 클래스로", "지역 아이들과 여행객을 만나고,", "강화의 청년 농부들과 함께 새로운 메뉴를 준비하고 있습니다.", "혜화담은 '농업과 일상, 사람'이 이어지는", "강화의 로컬 브랜드가 되고자 합니다."])}</p>
       <div class="cta"><p>혜화담의 대표 메뉴를 만나 보세요</p><div class="btns"><a class="btn primary" href="menu.html">메뉴 보기</a><a class="btn" href="${esc(SITE.links.rice)}" target="_blank" rel="noopener">쌀 브랜드 근자필성</a></div></div>
     </article></div>`;
   }
   function pageClass() {
     const item = byId("o01") || {};
     return subTop("떡체험", [{ name: "떡체험" }]) + `<div class="wrap"><article class="prose">
-      <p class="lead">강화 역사 이야기를 들으며<br>강화섬쌀로 떡을 빚어 보세요.</p>
-      <p>혜화담의 떡체험은 강화의 역사 이야기와 함께하는 체험 클래스입니다. 지역 아이들, 가족 여행객, 학교·기관 단체 모두 환영해요.</p>
-      <div class="steps"><div><b>01 · 이야기</b><p>강화의 역사와 강화섬쌀 이야기를 들어요</p></div><div><b>02 · 빚기</b><p>강화섬쌀 떡 반죽으로 직접 떡을 빚어요</p></div><div><b>03 · 맛보기</b><p>내가 만든 떡을 맛보고 즐겨요</p></div></div>
+      <p class="lead">${lines(["강화 역사 이야기를 들으며", "강화섬쌀로 떡을 빚어 보세요."])}</p>
+      <p>${lines(["혜화담의 떡체험은 강화의 역사 이야기와 함께하는 체험 클래스입니다.", "지역 아이들, 가족 여행객, 학교·기관 단체 모두 환영해요."])}</p>
+      <div class="steps">${step("01", "이야기", ["강화의 역사와", "강화섬쌀 이야기를 들어요"])}${step("02", "빚기", ["강화섬쌀 떡 반죽으로", "직접 떡을 빚어요"])}${step("03", "맛보기", ["내가 만든 떡을", "맛보고 즐겨요"])}</div>
       <h2>체험 안내</h2>
       <dl class="info">
         <div><dt>대상</dt><dd>어린이 · 가족 · 관광객 · 단체 (단체 환영)</dd></div>
@@ -307,7 +310,7 @@
         <div><dt>예약</dt><dd>전화 <a href="${telHref(SITE.store.tel)}">${esc(SITE.store.tel)}</a> 또는 인스타그램 DM</dd></div>
         <div><dt>장소</dt><dd>${esc(SITE.store.address)}</dd></div>
       </dl>
-      <div class="cta"><p>원하시는 날짜와 인원을 알려 주시면 일정을 안내해 드려요</p><div class="btns"><a class="btn primary" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 예약</a><a class="btn" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">${UI.insta} 인스타그램 DM</a></div></div>
+      <div class="cta"><p>${lines(["원하시는 날짜와 인원을 알려 주시면", "일정을 안내해 드려요"])}</p><div class="btns"><a class="btn primary" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 예약</a><a class="btn" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">${UI.insta} 인스타그램 DM</a></div></div>
     </article></div>`;
   }
 

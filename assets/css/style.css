@@ -208,7 +208,7 @@ header.site{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.97);ba
 .map-card svg{width:56px;height:56px;color:var(--brand)}
 .map-card .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 dl.info{margin:0}
-dl.info div{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:16px 0;border-bottom:1px solid var(--line)}
+dl.info > div{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:16px 0;border-bottom:1px solid var(--line)}
 dl.info dt{font-weight:700;color:var(--brand-deep)}
 dl.info dd{margin:0;color:var(--sub)}
 dl.info dd a{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
@@ -273,6 +273,29 @@ footer.site .wrap{padding-block:44px}
   .tabs::-webkit-scrollbar{display:none}
   .tabs button{flex-shrink:0}
   .steps{grid-template-columns:1fr}
-  dl.info div{grid-template-columns:80px 1fr}
+  dl.info > div{grid-template-columns:80px 1fr}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+
+/* ---------- 문구 줄바꿈 정리 ---------- */
+/* 제목·짧은 문구는 줄 길이를 고르게, 본문은 마지막 줄에 한두 글자만 남지 않게 */
+h1,h2,h3,.lead,.slide p,.cta p,.steps p,.promise b,.promise span,.card .name,.group-head p,.sec-head p,.band p{text-wrap:balance}
+p,li,dd{text-wrap:pretty}
+/* .ln = 문장 한 줄. PC에서는 문장마다 줄을 나누고, 좁은 화면에서는 이어서 흐름 */
+.ln{display:block}
+.chip{white-space:nowrap}
+.prose{max-width:720px}
+.prose p{margin:0 0 18px}
+.prose .lead{margin-bottom:22px}
+.steps p{line-height:1.6}
+.steps div{display:flex;flex-direction:column}
+.cta p{line-height:1.7}
+@media (max-width:760px){
+  .ln{display:inline}
+  .ln + .ln::before{content:" "}
+  .lead .ln{display:block}
+  .lead .ln + .ln::before{content:none}
+}
+.chips .chip{flex:none;max-width:100%}
+.steps p,.prose .steps p{margin:0}
+.map-card b{text-wrap:balance}
