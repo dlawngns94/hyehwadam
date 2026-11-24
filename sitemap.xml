@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DOMAIN 을 실제 주소(예: 아이디.github.io/hyehwadam)로 바꿔 주세요 -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://DOMAIN/</loc></url>
+  <url><loc>https://DOMAIN/menu.html</loc></url>
+  <url><loc>https://DOMAIN/about.html</loc></url>
+  <url><loc>https://DOMAIN/class.html</loc></url>
+  <url><loc>https://DOMAIN/store.html</loc></url>
+</urlset>

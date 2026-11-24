@@ -1,0 +1,43 @@
+{
+  "name": "혜화담",
+  "nameEn": "HYEHWADAM",
+  "tagline": "은혜로운 강화를 담다",
+  "description": "강화섬쌀로 빚은 우유앙금효소떡과 싱싱한 생과일 빙수, 떡 체험 클래스. 강화읍 디저트 카페 혜화담.",
+
+  "store": {
+    "address": "인천 강화군 강화읍 강화대로 400, 2층",
+    "directions": "강화군청 주차장 · 남문 공영주차장 방면",
+    "tel": "0507-1381-2922",
+    "mobile": "010-9594-2922",
+    "hours": [
+      { "day": "매일", "time": "11:00 – 22:00" }
+    ],
+    "hoursNote": "예약해 주시면 24시간 픽업 또는 배달 가능합니다",
+    "badges": ["식약처 지정 식품안심업소"],
+    "services": ["단체 이용 가능", "포장", "배달", "떡 택배 발송", "무선 인터넷", "간편결제"]
+  },
+
+  "links": {
+    "instagram": "https://www.instagram.com/hyehwadam",
+    "rice": "https://www.instagram.com/ganghwa1926",
+    "smartstore": "https://smartstore.naver.com/ganghwa1",
+    "naverMap": "https://map.naver.com/p/entry/place/2080410980",
+    "kakaoMap": "https://map.kakao.com/link/search/강화 혜화담"
+  },
+
+  "company": {
+    "corpName": "혜화담",
+    "ceo": "조은혜",
+    "businessNumber": "(입력 필요)"
+  },
+
+  "categories": [
+    { "id": "all", "name": "전체" },
+    { "id": "tteok", "name": "떡", "en": "RICE CAKE", "sub": "강화섬쌀로 매일 빚는 효소떡 · 첨가물·방부제 없이" },
+    { "id": "bingsu", "name": "빙수", "en": "BINGSU", "sub": "싱싱한 생과일로 만든 시원한 빙수 · 포장 가능" },
+    { "id": "coffee", "name": "커피 · 라떼", "en": "COFFEE & LATTE", "sub": "떡과 빙수에 곁들이는 한 잔" },
+    { "id": "ade", "name": "에이드 · 주스 · 스무디", "en": "ADE & JUICE", "sub": "생과일로 만드는 상큼한 음료" },
+    { "id": "tea", "name": "전통차", "en": "TRADITIONAL TEA", "sub": "몸을 데워 주는 우리 차" },
+    { "id": "order", "name": "단체 · 특별주문", "en": "GROUP ORDER", "sub": "답례품 · 도시락 · 간식세트 · 떡체험 — 문의 주시면 맞춤으로 준비해요" }
+  ]
+}
