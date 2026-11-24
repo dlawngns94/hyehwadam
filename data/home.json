@@ -1,7 +1,7 @@
 {
   "slides": [
-    { "image": "", "icon": "tteok", "color": "#e3efe5", "eyebrow": "SIGNATURE", "title": "강화섬쌀로 빚은\n우유앙금효소떡", "text": "가족이 지은 쌀 · 첨가물·방부제 없이 · 택배 가능", "link": "menu-item.html?id=t01" },
-    { "image": "", "icon": "bingsu", "color": "#fbe9dc", "eyebrow": "BINGSU", "title": "싱싱한 생과일로 만든\n시원한 빙수", "text": "메론 · 망고 · 복숭아 · 수박 · 무화과 — 포장 가능", "link": "menu.html?cat=bingsu" },
+    { "image": "assets/images/milk-tteok-set.jpg", "icon": "tteok", "color": "#e3efe5", "eyebrow": "SIGNATURE", "title": "강화섬쌀로 빚은\n우유앙금효소떡", "text": "가족이 지은 쌀 · 첨가물·방부제 없이 · 택배 가능", "link": "menu-item.html?id=t01" },
+    { "image": "assets/images/peach-bingsu.jpg", "icon": "bingsu", "color": "#fbe9dc", "eyebrow": "BINGSU", "title": "싱싱한 생과일로 만든\n시원한 빙수", "text": "메론 · 망고 · 복숭아 · 수박 · 무화과 — 포장 가능", "link": "menu.html?cat=bingsu" },
     { "image": "", "icon": "hands", "color": "#f6efd9", "eyebrow": "CLASS", "title": "강화 이야기를 들으며\n떡을 빚어요", "text": "강화섬쌀 떡체험 · 단체 환영", "link": "class.html" }
   ],
   "signature": { "title": "혜화담 대표 메뉴", "sub": "처음 오셨다면 이 메뉴부터", "pick": ["t01", "b01", "b02", "b03"] },
@@ -9,7 +9,8 @@
     "eyebrow": "OUR STORY",
     "title": "은혜로운 강화를\n담다",
     "text": "혜화담은 '은혜로운 강화를 담다'라는 뜻입니다. 4대째 강화에서 농사짓는 집안의 쌀로 떡을 빚고, 싱싱한 생과일로 빙수를 만듭니다. 쌀 생산부터 가공, 판매까지 직접 하기에 첨가물과 방부제 없이, 먹고 나서도 속 편한 효소떡을 만들 수 있어요.",
-    "link": "about.html"
+    "link": "about.html",
+    "image": "assets/images/milk-tteok-set-wide.jpg"
   },
   "promise": [
     { "icon": "rice", "title": "강화섬쌀", "text": "가족이 강화에서 직접 농사짓고 도정한 쌀" },

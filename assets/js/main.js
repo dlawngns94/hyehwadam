@@ -157,7 +157,7 @@
         ${HOME.promise.map(p => `<div>${ICON[p.icon] || ""}<b>${esc(p.title)}</b><span>${esc(p.text)}</span></div>`).join("")}
       </div></div></section>
       <section class="sec"><div class="wrap story">
-        <div class="art">${ICON.rice}</div>
+        <div class="art">${st.image ? `<img src="${esc(st.image)}" alt="혜화담 우유앙금효소떡 세트" loading="lazy">` : ICON.rice}</div>
         <div><div class="eyebrow">${esc(st.eyebrow)}</div><h2>${esc(st.title)}</h2><p>${esc(st.text)}</p><a class="btn" href="${esc(st.link)}">혜화담 이야기</a></div>
       </div></section>
       <section class="sec cream"><div class="wrap">
