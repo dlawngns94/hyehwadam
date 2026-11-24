@@ -304,3 +304,6 @@ p,li,dd{text-wrap:pretty}
 .prose.center .steps div{align-items:center}
 /* 홈 OUR STORY 제목 한 줄 */
 .story h2{white-space:nowrap}
+/* 상단 메뉴: 영문·한글 가운데 정렬 */
+.gnb > li > a{justify-content:center}
+.gnb > li > a > div{text-align:center}
