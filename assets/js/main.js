@@ -284,7 +284,7 @@
   }
   const step = (n, title, text) => `<div><b>${n} · ${title}</b><p>${lines(text)}</p></div>`;
   function pageAbout() {
-    return subTop("혜화담 이야기", [{ name: "혜화담 이야기" }]) + `<div class="wrap"><article class="prose">
+    return subTop("혜화담 이야기", [{ name: "혜화담 이야기" }]) + `<div class="wrap"><article class="prose center">
       <p class="lead">${lines(["혜화담은", "'은혜로운 강화를 담다'라는 뜻입니다."])}</p>
       <p>${lines(["강화는 섬이라는 땅, 바다에서 불어오는 해풍, 큰 일교차 덕분에", "농산물이 맛있게 자라는 곳입니다.", "혜화담은 그 강화의 맛을 건강하게 즐길 수 있는 공간을 만들고 싶어 문을 열었습니다."])}</p>
       <h2>4대째 이어 온 쌀로 빚는 떡</h2>

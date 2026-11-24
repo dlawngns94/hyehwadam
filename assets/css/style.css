@@ -299,3 +299,8 @@ p,li,dd{text-wrap:pretty}
 .chips .chip{flex:none;max-width:100%}
 .steps p,.prose .steps p{margin:0}
 .map-card b{text-wrap:balance}
+/* 혜화담 이야기: 가운데 정렬 */
+.prose.center{text-align:center}
+.prose.center .steps div{align-items:center}
+/* 홈 OUR STORY 제목 한 줄 */
+.story h2{white-space:nowrap}
