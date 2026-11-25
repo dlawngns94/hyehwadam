@@ -174,6 +174,55 @@
   const stLabel = x => (x.kind === "reserve" ? STATUS_R : STATUS)[x.status] || x.status;
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
   const dayLabel = d => { const x = new Date(d + "T00:00:00Z"); return `${x.getUTCMonth() + 1}월 ${x.getUTCDate()}일 (${WEEK[x.getUTCDay()]})`; };
+  /* ---------- 관리자: 사장님 텔레그램 알림 (알림음 O) ---------- */
+  async function tgBox(ctx, el) {
+    const esc = ctx.esc;
+    let s = null, link = null, msg = null, poll = null;
+    const stop = () => { if (poll) { clearInterval(poll); poll = null; } };
+    async function load() {
+      try { s = await api(ctx, "/api/admin/telegram"); }
+      catch (err) { el.innerHTML = `<div class="kn"><p class="err">${esc(err.message)}</p></div>`; return; }
+      render();
+    }
+    function render() {
+      let body;
+      if (!s.ready) body = `<p><b>텔레그램으로 새 예약 알림 받기 (알림음 O)</b> <span class="free">무료</span><br><span class="hint">${s.error ? esc(s.error) + " — " : ""}텔레그램 봇을 만들고 Cloudflare 에 TELEGRAM_BOT_TOKEN 을 넣으면 켜져요. (텔레그램 설정 안내 참고)</span></p>`;
+      else if (link) body = `<p><b>텔레그램 연결하기</b><br><span class="hint">① <b>[텔레그램 열기]</b>를 누르고, 텔레그램에서 <b>시작(START)</b>을 눌러 주세요.<br>② 몇 초 안에 자동으로 연결돼요. 안 되면 <b>[연결 확인]</b>을 눌러 주세요. (15분 안에)</span></p>
+          <a class="btn primary sm" href="${esc(link.url)}" target="_blank" rel="noopener">텔레그램 열기</a><button type="button" class="btn sm" data-tg="check">연결 확인</button><button type="button" class="link-btn" data-tg="cancel">취소</button>`;
+      else if (!s.chats.length) body = `<p><b>텔레그램으로 새 예약 알림 받기 (알림음 O)</b> <span class="free">무료</span><br><span class="hint">새 예약·문의가 들어오면 휴대폰에 알림음과 함께 바로 알려 드려요. (봇: @${esc(s.bot)})</span></p><button type="button" class="btn primary sm" data-tg="link">텔레그램 연결</button>`;
+      else body = `<p><b>텔레그램 알림 연결됨</b> · ${s.chats.map(c => esc(c.name)).join(", ")}<br><span class="hint">새 예약이 오면 @${esc(s.bot)} 이(가) 알림음과 함께 보내요.</span></p>
+          <button type="button" class="btn sm" data-tg="test">시험 보내기</button><button type="button" class="btn sm" data-tg="link">휴대폰 추가</button>
+          ${s.chats.map(c => `<button type="button" class="link-btn" data-tg="unlink" data-id="${esc(c.chatId)}">${esc(c.name)} 해제</button>`).join("")}`;
+      el.innerHTML = `<div class="kn tg${s.ready && s.chats.length && !link ? " on" : ""}">${body}${msg ? `<p class="kn-msg ${msg[0]}">${esc(msg[1])}</p>` : ""}</div>`;
+    }
+    async function check(silent) {
+      try {
+        const r = await api(ctx, "/api/admin/telegram/check", { method: "POST" });
+        if (r.linked) { stop(); link = null; msg = ["ok", "텔레그램이 연결됐어요. 텔레그램에 확인 메시지가 갔어요."]; await load(); return; }
+        if (!silent) { msg = ["no", "아직 시작(START)을 받지 못했어요. 텔레그램에서 시작을 눌렀는지 확인해 주세요."]; render(); }
+      } catch (err) { if (!silent) { msg = ["no", err.message]; render(); } }
+    }
+    el.addEventListener("click", async e => {
+      const b = e.target.closest("[data-tg]"); if (!b) return;
+      const a = b.dataset.tg;
+      if (a === "unlink" && !b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "한 번 더 누르면 해제"; return; }
+      b.disabled = true; msg = null;
+      try {
+        if (a === "link") {
+          link = await api(ctx, "/api/admin/telegram/link", { method: "POST" });
+          stop(); let n = 0;
+          poll = setInterval(() => { if (++n > 45 || !link) { stop(); return; } check(true); }, 4000);
+          render(); return;
+        }
+        if (a === "check") { await check(false); return; }
+        if (a === "cancel") { stop(); link = null; render(); return; }
+        if (a === "test") { const r = await api(ctx, "/api/admin/telegram/test", { method: "POST" }); msg = r.sent ? ["ok", "보냈어요. 휴대폰에 텔레그램 알림이 울렸는지 확인해 보세요."] : ["no", "보내지 못했어요: " + (r.reason || "")]; render(); return; }
+        if (a === "unlink") { await api(ctx, "/api/admin/telegram/" + encodeURIComponent(b.dataset.id), { method: "DELETE" }); msg = ["ok", "연결을 해제했어요."]; await load(); return; }
+      } catch (err) { msg = ["no", err.message]; render(); }
+    });
+    load();
+  }
+
   /* ---------- 관리자: 사장님 카톡 '나에게 보내기' ---------- */
   async function kakaoBox(ctx, me, el) {
     const esc = ctx.esc;
@@ -190,9 +239,9 @@
       const others = s.all.filter(x => x.memberId !== me.id && !x.broken).map(x => esc(x.nickname)).join(", ");
       let body;
       if (!s.canLink) body = `<p>사장님 카톡으로 새 예약 알림을 받으려면 <b>카카오 계정</b>으로 로그인한 관리자가 연결해야 해요.</p>`;
-      else if (!m) body = `<p><b>사장님 카톡으로 새 예약 알림 받기</b> <span class="free">무료</span><br><span class="hint">새 예약·문의가 들어오면 카카오톡 '나와의 채팅'으로 바로 알려 드려요.</span></p><a class="btn primary sm" href="${linkHref}">카톡 알림 연결</a>`;
+      else if (!m) body = `<p><b>카톡 '나와의 채팅'에 예약 기록 받기</b> <span class="free">무료</span><br><span class="hint">새 예약·문의를 카카오톡 '나와의 채팅'에 남겨 둬요. (나와의 채팅은 알림음이 울리지 않아요 — 알림음은 텔레그램으로)</span></p><a class="btn primary sm" href="${linkHref}">카톡 알림 연결</a>`;
       else if (m.broken) body = `<p><b>카톡 알림 연결이 끊겼어요</b> <span class="hint">(${esc(m.broken)})</span><br><span class="hint">아래 버튼을 눌러 다시 동의하면 이어서 받을 수 있어요.</span></p><a class="btn primary sm" href="${linkHref}">다시 연결</a><button type="button" class="link-btn" data-kn="unlink">연결 해제</button>`;
-      else body = `<p><b>카톡 알림 연결됨</b> · 새 예약이 오면 '나와의 채팅'으로 보내요.<br><span class="hint">연결 유지: ${until}까지 (알림을 보낼 때마다 자동으로 연장돼요)</span></p><button type="button" class="btn sm" data-kn="test">시험 보내기</button><button type="button" class="link-btn" data-kn="unlink">연결 해제</button>`;
+      else body = `<p><b>카톡 기록 연결됨</b> · 새 예약을 '나와의 채팅'에 남겨요 (알림음 없음).<br><span class="hint">연결 유지: ${until}까지 (알림을 보낼 때마다 자동으로 연장돼요)</span></p><button type="button" class="btn sm" data-kn="test">시험 보내기</button><button type="button" class="link-btn" data-kn="unlink">연결 해제</button>`;
       el.innerHTML = `<div class="kn${m && !m.broken ? " on" : ""}">${body}${others ? `<p class="hint">함께 받는 관리자: ${others}</p>` : ""}${msg ? `<p class="kn-msg ${msg[0]}">${esc(msg[1])}</p>` : ""}</div>`;
     }
     el.addEventListener("click", async e => {
@@ -210,7 +259,8 @@
 
   async function loadInquiries(ctx, me) {
     const esc = ctx.esc, root = ctx.$('[data-panel="inq"]');
-    root.innerHTML = `<div id="kn-box"></div><div id="inq-body"></div>`;
+    root.innerHTML = `<div id="tg-box"></div><div id="kn-box"></div><div id="inq-body"></div>`;
+    tgBox(ctx, ctx.$("#tg-box", root));
     kakaoBox(ctx, me, ctx.$("#kn-box", root));
     const panel = ctx.$("#inq-body", root);
     let list = [], filter = "new", alim = null;

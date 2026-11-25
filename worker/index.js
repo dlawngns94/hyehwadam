@@ -5,6 +5,7 @@
    - 예약 · 문의 접수(메뉴 상세 · 떡체험 화면의 폼) → D1 에 저장, 관리자 화면에서 확인
    - 떡체험 회차(날짜 · 시간 · 정원) 예약, 남은 자리 표시
    - 카카오 알림톡(솔라피): 새 예약 → 사장님, 확정/취소 → 손님
+   - 사장님 새 예약 알림: 카톡 '나에게 보내기'(기록용) · 텔레그램(알림음)
    이 파일 하나를 Cloudflare 대시보드의 Worker 편집기에 그대로 붙여 넣으면 됩니다.
    설정 방법은 저장소의 「로그인_관리자_설정안내.md」를 보세요.
 
@@ -29,6 +30,8 @@
      ALIM_TPL_NEW        템플릿 ID — 새 예약·문의 (사장님용)
      ALIM_TPL_CONFIRM    템플릿 ID — 예약 확정 (손님용)
      ALIM_TPL_CANCEL     템플릿 ID — 예약 취소 (손님용)
+   텔레그램 (사장님 새 예약 알림, 알림음 O)
+     TELEGRAM_BOT_TOKEN  @BotFather 가 준 봇 토큰 (비밀)
    바인딩: D1 데이터베이스를 이름 DB 로 연결
    ========================================================= */
 
@@ -89,6 +92,12 @@ async function route(req, env, ctx) {
       if (path === "/api/admin/menu" && req.method === "PUT") return json(await saveMenu(await readBody(req, 1_000_000), user, env), 200, req, env);
       if (path === "/api/admin/image" && req.method === "POST") return json(await saveImage(await readBody(req, 4_000_000), user, env), 200, req, env);
       if (path === "/api/admin/inquiries" && req.method === "GET") return json(await listInquiries(env), 200, req, env);
+      if (path === "/api/admin/telegram" && req.method === "GET") return json(await tgStatus(env), 200, req, env);
+      if (path === "/api/admin/telegram/link" && req.method === "POST") return json(await tgCreateLink(user, env), 200, req, env);
+      if (path === "/api/admin/telegram/check" && req.method === "POST") return json(await tgCheck(env), 200, req, env);
+      if (path === "/api/admin/telegram/test" && req.method === "POST") return json(await sendTelegram(env, "🔔 혜화담 텔레그램 알림 시험\n이 메시지가 보이고 알림음이 울렸다면 연결 완료예요.", true), 200, req, env);
+      const tgDel = path.match(/^\/api\/admin\/telegram\/(-?\d{1,20})$/);
+      if (tgDel && req.method === "DELETE") return json(await tgUnlink(tgDel[1], env), 200, req, env);
       if (path === "/api/admin/kakao-notify" && req.method === "GET") return json(await kakaoNotifyStatus(user, env), 200, req, env);
       if (path === "/api/admin/kakao-notify" && req.method === "DELETE") return json(await kakaoNotifyUnlink(user, env), 200, req, env);
       if (path === "/api/admin/kakao-notify/test" && req.method === "POST") return json(await sendKakaoMemo(env, "[혜화담] 카톡 알림 시험\n이 메시지가 보이면 새 예약 알림이 이 채팅방으로 와요.", user.sub), 200, req, env);
@@ -585,6 +594,7 @@ async function notifyOwnerNew(env, id) {
   if (!r) return;
   const tries = [];
   if (alimReady(env)) tries.push(["알림톡", await sendAlimtalk(env, ownerPhones(env), env.ALIM_TPL_NEW, inqVars(r, ["#{종류}", "#{메뉴}", "#{고객명}", "#{연락처}", "#{일시}", "#{인원}", "#{요청}"]))]);
+  if (env.TELEGRAM_BOT_TOKEN) tries.push(["텔레그램", await sendTelegram(env, ownerTelegramText(r), true)]);
   tries.push(["카톡", await sendKakaoMemo(env, ownerMemoText(r))]);
   const ok = tries.filter(([, x]) => x.sent).map(([v]) => v);
   const res = ok.length ? { sent: true, via: ok.join("·") }
@@ -602,6 +612,100 @@ function ownerMemoText(r) {
   ].filter(Boolean);
   const text = lines.join("\n");
   return text.length > 200 ? text.slice(0, 198) + "…" : text; /* 카카오 텍스트 메시지는 200자까지 */
+}
+
+/* ---------- 사장님 텔레그램 알림 (알림음 O, 무료) ---------- */
+const WEEK_KO = ["일", "월", "화", "수", "목", "금", "토"];
+function ownerTelegramText(r) {
+  const d = r.want_date ? new Date(r.want_date + "T00:00:00Z") : null;
+  const when = [d ? `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일(${WEEK_KO[d.getUTCDay()]})` : "", r.want_time || ""].filter(Boolean).join(" ");
+  const created = new Date(Date.parse(r.created_at) + 9 * 3600 * 1000).toISOString();
+  return [
+    `🔔 혜화담 새 ${r.kind === "reserve" ? "예약" : "문의"}${r.slot_id ? " (떡체험 회차)" : ""}`,
+    `메뉴: ${r.item_name || "-"}`,
+    when || r.people ? `일시: ${when || "-"}${r.people ? " · " + r.people + (r.slot_id ? "명" : "") : ""}` : "",
+    `고객: ${r.name} ${r.phone}`,
+    r.message ? `요청: ${String(r.message).slice(0, 500)}` : "",
+    `접수: ${created.slice(5, 10).replace("-", "/")} ${created.slice(11, 16)} · #${r.id}`
+  ].filter(Boolean).join("\n");
+}
+let tgReady = false;
+async function ensureTelegram(env) {
+  if (tgReady) return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_chats (chat_id TEXT PRIMARY KEY, name TEXT, member_id TEXT, created_at TEXT NOT NULL)").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_links (code TEXT PRIMARY KEY, member_id TEXT NOT NULL, exp INTEGER NOT NULL)").run();
+  tgReady = true;
+}
+async function tgApi(env, method, body) {
+  const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {})
+  });
+  const j = await r.json().catch(() => ({}));
+  return { status: r.status, ...j };
+}
+async function tgStatus(env) {
+  if (!env.TELEGRAM_BOT_TOKEN) return { ready: false, chats: [] };
+  await ensureTelegram(env);
+  const me = await tgApi(env, "getMe");
+  if (!me.ok) return { ready: false, error: me.status === 401 ? "봇 토큰이 맞지 않아요" : "텔레그램 서버 연결 실패", chats: [] };
+  const rows = (await env.DB.prepare("SELECT chat_id, name, member_id, created_at FROM telegram_chats ORDER BY created_at").all()).results || [];
+  return { ready: true, bot: me.result.username, botName: me.result.first_name, chats: rows.map(c => ({ chatId: c.chat_id, name: c.name, createdAt: c.created_at })) };
+}
+async function tgCreateLink(user, env) {
+  if (!env.TELEGRAM_BOT_TOKEN) throw new HttpError(400, "config", "TELEGRAM_BOT_TOKEN 설정이 없어요.");
+  await ensureTelegram(env);
+  const me = await tgApi(env, "getMe");
+  if (!me.ok) throw new HttpError(502, "telegram", "텔레그램 봇에 연결하지 못했어요. 봇 토큰을 확인해 주세요.");
+  await env.DB.prepare("DELETE FROM telegram_links WHERE exp < ?").bind(now()).run();
+  const code = "hd" + randomHex(10);
+  await env.DB.prepare("INSERT INTO telegram_links (code, member_id, exp) VALUES (?, ?, ?)").bind(code, user.sub, now() + 900).run();
+  return { code, bot: me.result.username, url: `https://t.me/${me.result.username}?start=${code}` };
+}
+/* 봇에 온 '/start 코드' 메시지를 찾아 연결 (웹훅 없이 확인 버튼·자동 확인으로) */
+async function tgCheck(env) {
+  if (!env.TELEGRAM_BOT_TOKEN) throw new HttpError(400, "config", "TELEGRAM_BOT_TOKEN 설정이 없어요.");
+  await ensureTelegram(env);
+  const up = await tgApi(env, "getUpdates", { timeout: 0, allowed_updates: ["message"] });
+  if (!up.ok) throw new HttpError(502, "telegram", up.status === 409 ? "봇에 웹훅이 설정돼 있어 확인할 수 없어요." : "텔레그램 서버 연결 실패");
+  let linked = 0, last = 0;
+  for (const u of up.result || []) {
+    last = Math.max(last, u.update_id);
+    const m = u.message;
+    const code = m && typeof m.text === "string" && (m.text.match(/^\/start\s+(hd[a-f0-9]{20})$/) || [])[1];
+    if (!code) continue;
+    const link = await env.DB.prepare("SELECT member_id FROM telegram_links WHERE code = ? AND exp >= ?").bind(code, now()).first();
+    if (!link || !isAdmin(env, link.member_id)) continue;
+    const name = [m.chat.first_name, m.chat.last_name].filter(Boolean).join(" ") || m.chat.username || m.chat.title || "텔레그램";
+    await env.DB.prepare("INSERT INTO telegram_chats (chat_id, name, member_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET name = excluded.name, member_id = excluded.member_id")
+      .bind(String(m.chat.id), name.slice(0, 40), link.member_id, new Date().toISOString()).run();
+    await env.DB.prepare("DELETE FROM telegram_links WHERE code = ?").bind(code).run();
+    await tgApi(env, "sendMessage", { chat_id: m.chat.id, text: "✅ 혜화담 예약 알림이 연결됐어요.\n새 예약·문의가 들어오면 여기로 알려 드릴게요." });
+    linked++;
+  }
+  if (last) await tgApi(env, "getUpdates", { offset: last + 1, timeout: 0 }); /* 읽은 메시지 정리 */
+  return { ok: true, linked };
+}
+async function sendTelegram(env, text, withButton) {
+  if (!env.TELEGRAM_BOT_TOKEN) return { sent: false, reason: "텔레그램 설정 전" };
+  await ensureTelegram(env);
+  const rows = (await env.DB.prepare("SELECT chat_id FROM telegram_chats").all()).results || [];
+  if (!rows.length) return { sent: false, reason: "텔레그램 연결 전" };
+  let sent = 0; const fails = [];
+  for (const c of rows) {
+    const body = { chat_id: c.chat_id, text, disable_web_page_preview: true };
+    if (withButton) body.reply_markup = { inline_keyboard: [[{ text: "관리자 페이지 열기", url: siteUrl(env) + "admin.html" }]] };
+    const r = await tgApi(env, "sendMessage", body);
+    if (r.ok) { sent++; continue; }
+    console.error("[텔레그램]", r.status, r.description);
+    if (r.status === 403) { await env.DB.prepare("DELETE FROM telegram_chats WHERE chat_id = ?").bind(c.chat_id).run(); fails.push("봇이 차단돼 연결을 해제했어요"); }
+    else fails.push(r.description || "보내기 실패");
+  }
+  return sent ? { sent: true, count: sent } : { sent: false, reason: "텔레그램 " + fails[0] };
+}
+async function tgUnlink(chatId, env) {
+  await ensureTelegram(env);
+  await env.DB.prepare("DELETE FROM telegram_chats WHERE chat_id = ?").bind(String(chatId)).run();
+  return { ok: true };
 }
 
 /* ---------- 사장님 카톡 '나에게 보내기' ---------- */
