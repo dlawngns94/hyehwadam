@@ -103,10 +103,11 @@
             ${me.isAdmin ? `<span class="chip good">관리자</span>` : ""}</dd></div>
         </dl>
         <div class="me-actions">
-          ${me.isAdmin ? `<a class="btn primary" href="admin.html">관리자 페이지</a>` : ""}
+          ${me.isAdmin ? `<a class="btn primary" href="admin.html">관리자 페이지${me.newInquiries ? `<span class="badge-n">새 문의 ${me.newInquiries}</span>` : ""}</a>` : ""}
           <button type="button" class="btn" id="logout">로그아웃</button>
           <button type="button" class="link-btn" id="withdraw">회원 탈퇴</button>
         </div>
+        <div class="my-inq" id="my-inq" hidden></div>
         <div id="withdraw-box" hidden class="notice warn">
           <p>${ctx.lines(["탈퇴하면 혜화담에 저장된 회원 정보가 바로 삭제돼요.", "정말 탈퇴할까요?"])}</p>
           <div class="btns"><button type="button" class="btn danger" id="withdraw-yes">탈퇴하기</button><button type="button" class="btn" id="withdraw-no">취소</button></div>
@@ -116,6 +117,11 @@
         catch { const r = document.createRange(); r.selectNodeContents(ctx.$(".mid")); getSelection().removeAllRanges(); getSelection().addRange(r); e.target.textContent = "선택됨"; }
       });
       ctx.$("#logout").addEventListener("click", () => { token.clear(); location.href = "index.html"; });
+      api(ctx, "/api/me/inquiries").then(r => {
+        if (!r.inquiries.length) return;
+        const el = ctx.$("#my-inq"); el.hidden = false;
+        el.innerHTML = `<h3>내 예약 · 문의</h3><ul>${r.inquiries.map(x => `<li><span class="st ${ctx.esc(x.status)}">${({ new: "접수됨", done: "확인 완료", canceled: "취소" })[x.status] || ""}</span><b>${ctx.esc(x.itemName || "")}</b>${x.date ? `<span>${ctx.esc(x.date)}${x.time ? " " + ctx.esc(x.time) : ""}</span>` : ""}<small>${fmtDate(x.createdAt)} 접수</small></li>`).join("")}</ul>`;
+      }).catch(() => { /* 내역은 없어도 됨 */ });
       const wb = ctx.$("#withdraw-box");
       ctx.$("#withdraw").addEventListener("click", () => { wb.hidden = false; });
       ctx.$("#withdraw-no").addEventListener("click", () => { wb.hidden = true; });
@@ -146,6 +152,66 @@
     });
   }
 
+  const KIND = { reserve: "예약 · 주문", inquiry: "문의" };
+  const STATUS = { new: "새 문의", done: "확인 완료", canceled: "취소" };
+  async function loadInquiries(ctx, me) {
+    const esc = ctx.esc, panel = ctx.$('[data-panel="inq"]');
+    let list = [], filter = "new";
+    const badge = () => { const n = list.filter(x => x.status === "new").length, b = ctx.$("#inq-badge"); b.textContent = n; b.hidden = !n; };
+    const telHref = t => "tel:" + String(t || "").replace(/[^0-9+]/g, "");
+    function render() {
+      const c = { all: list.length, new: 0, done: 0, canceled: 0 };
+      list.forEach(x => { c[x.status] = (c[x.status] || 0) + 1; });
+      const rows = list.filter(x => filter === "all" || x.status === filter);
+      panel.innerHTML = `<div class="inq-filter" role="group" aria-label="상태로 보기">
+          ${[["new", "새 문의"], ["done", "확인 완료"], ["canceled", "취소"], ["all", "전체"]].map(([k, v]) => `<button type="button" data-f="${k}" aria-pressed="${filter === k}">${v} ${c[k]}</button>`).join("")}
+          <button type="button" class="link-btn" id="inq-reload">새로고침</button>
+        </div>
+        <div class="inq-list">${rows.map(x => `
+          <article class="inq-card st-${esc(x.status)}" data-id="${x.id}">
+            <div class="top"><span class="st ${esc(x.status)}">${STATUS[x.status] || esc(x.status)}</span><span class="kind">${KIND[x.kind] || esc(x.kind)}</span>
+              <h3>${esc(x.itemName || "메뉴 미지정")}</h3><time>접수 ${fmtTime(x.createdAt)} · #${x.id}</time></div>
+            <dl>
+              <div><dt>이름</dt><dd>${esc(x.name)}${x.memberId ? ' <span class="chip">회원</span>' : ""}</dd></div>
+              <div><dt>연락처</dt><dd><a href="${telHref(x.phone)}">${esc(x.phone)}</a></dd></div>
+              ${x.date ? `<div><dt>희망 날짜</dt><dd>${esc(x.date)}${x.time ? " " + esc(x.time) : ""}</dd></div>` : ""}
+              ${x.people ? `<div><dt>인원 · 수량</dt><dd>${esc(x.people)}</dd></div>` : ""}
+            </dl>
+            ${x.message ? `<p class="msg">${esc(x.message)}</p>` : ""}
+            <div class="memo"><input type="text" maxlength="500" placeholder="관리자 메모 (손님에게는 안 보여요)" value="${esc(x.memo || "")}" aria-label="관리자 메모"><button type="button" class="btn sm" data-act="memo">메모 저장</button></div>
+            <div class="acts">
+              ${x.status !== "done" ? `<button type="button" class="btn primary sm" data-act="done">확인 완료</button>` : ""}
+              ${x.status !== "canceled" ? `<button type="button" class="btn sm" data-act="canceled">취소 처리</button>` : ""}
+              ${x.status !== "new" ? `<button type="button" class="btn sm" data-act="new">새 문의로 되돌리기</button>` : ""}
+              <button type="button" class="link-btn danger" data-act="del">삭제</button>
+            </div>
+          </article>`).join("") || `<p class="empty">${filter === "new" ? "새로 들어온 예약·문의가 없어요." : "해당하는 예약·문의가 없어요."}</p>`}</div>`;
+      badge();
+    }
+    async function load() {
+      panel.innerHTML = `<p class="loading">예약 · 문의를 불러오는 중…</p>`;
+      try { list = (await api(ctx, "/api/admin/inquiries")).inquiries; render(); }
+      catch (err) { panel.innerHTML = `<div class="notice warn">${esc(err.message)}</div>`; }
+    }
+    panel.addEventListener("click", async e => {
+      const f = e.target.closest("[data-f]");
+      if (f) { filter = f.dataset.f; render(); return; }
+      if (e.target.id === "inq-reload") { load(); return; }
+      const b = e.target.closest("[data-act]"); if (!b) return;
+      const card = b.closest(".inq-card"), id = Number(card.dataset.id), item = list.find(x => x.id === id);
+      const act = b.dataset.act;
+      if (act === "del" && !b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "정말 삭제할까요? 한 번 더 누르면 삭제돼요"; return; }
+      b.disabled = true;
+      try {
+        if (act === "del") { await api(ctx, "/api/admin/inquiries/" + id, { method: "DELETE" }); list = list.filter(x => x.id !== id); }
+        else if (act === "memo") { const memo = ctx.$("input", card).value; await api(ctx, "/api/admin/inquiries/" + id, { method: "PATCH", body: { memo } }); item.memo = memo; b.textContent = "저장됨"; setTimeout(() => { b.textContent = "메모 저장"; b.disabled = false; }, 1200); return; }
+        else { await api(ctx, "/api/admin/inquiries/" + id, { method: "PATCH", body: { status: act, memo: ctx.$("input", card).value } }); item.status = act; item.memo = ctx.$("input", card).value; }
+        render();
+      } catch (err) { b.disabled = false; card.insertAdjacentHTML("beforeend", `<p class="err">${esc(err.message)}</p>`); }
+    });
+    load();
+  }
+
   const admin = {
     render(ctx) { return ctx.subTop("관리자", [{ name: "관리자" }]) + `<div class="wrap admin" id="admin"><p class="loading">불러오는 중…</p></div>`; },
     async bind(ctx) {
@@ -165,10 +231,39 @@
         return;
       }
 
-      root.innerHTML = `<p class="loading">메뉴를 불러오는 중…</p>`;
+      root.innerHTML = `
+        <div class="adm-tabs" role="tablist">
+          <button type="button" role="tab" data-tab="inq" aria-selected="true">예약 · 문의${me.newInquiries ? `<span class="badge-n" id="inq-badge">${me.newInquiries}</span>` : `<span class="badge-n" id="inq-badge" hidden></span>`}</button>
+          <button type="button" role="tab" data-tab="menu" aria-selected="false">메뉴 관리</button>
+          <button type="button" role="tab" data-tab="members" aria-selected="false">회원 목록</button>
+          <span class="adm-who">${esc(me.nickname)} 님 · 관리자</span>
+        </div>
+        <div data-panel="inq"><p class="loading">예약 · 문의를 불러오는 중…</p></div>
+        <div data-panel="menu" hidden><p class="loading">메뉴를 불러오는 중…</p></div>
+        <div data-panel="members" hidden><p class="loading">회원 목록을 불러오는 중…</p></div>`;
+
+      /* 탭 · 회원 목록 */
+      let membersLoaded = false;
+      ctx.$$(".adm-tabs [data-tab]").forEach(b => b.addEventListener("click", async () => {
+        ctx.$$(".adm-tabs [data-tab]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+        ctx.$$("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== b.dataset.tab; });
+        if (b.dataset.tab !== "members" || membersLoaded) return;
+        const panel = ctx.$('[data-panel="members"]');
+        try {
+          const r = await api(ctx, "/api/admin/members");
+          membersLoaded = true;
+          panel.innerHTML = `<p class="adm-count">전체 회원 <b>${r.total.toLocaleString("ko-KR")}</b>명</p>
+            <div class="table-wrap"><table class="adm-table"><thead><tr><th>닉네임</th><th>로그인 방식</th><th>가입일</th><th>최근 로그인</th><th>회원번호</th></tr></thead>
+            <tbody>${r.members.map(m => `<tr><td>${esc(m.nickname)}${m.isAdmin ? ' <span class="chip good">관리자</span>' : ""}</td><td>${esc(PROVIDER[m.provider] || m.provider)}</td><td>${fmtDate(m.createdAt)}</td><td>${fmtTime(m.lastLogin)}</td><td><code>${esc(m.id)}</code></td></tr>`).join("") || `<tr><td colspan="5" class="none">아직 회원이 없어요.</td></tr>`}</tbody></table></div>`;
+        } catch (err) { panel.innerHTML = `<div class="notice warn">${esc(err.message)}</div>`; }
+      }));
+
+
+      loadInquiries(ctx, me);
+
       let data;
       try { data = await api(ctx, "/api/admin/menu"); }
-      catch (err) { root.innerHTML = `<div class="notice warn">${esc(err.message)}</div>`; return; }
+      catch (err) { ctx.$('[data-panel="menu"]').innerHTML = `<div class="notice warn">${esc(err.message)}</div>`; return; }
 
       const S = { items: data.items, sha: data.sha, cats: data.categories, sel: null, filter: "all", q: "", dirty: false, pending: new Map(), preview: new Map(), saving: false };
       const catName = id => (S.cats.find(c => c.id === id) || {}).name || id;
@@ -178,13 +273,7 @@
         return src ? `<img src="${esc(src)}" alt="">` : (ctx.ICON[m.icon] || ctx.ICON.tteok).replace("<svg", '<svg style="color:var(--brand-deep)" aria-hidden="true"');
       };
 
-      root.innerHTML = `
-        <div class="adm-tabs" role="tablist">
-          <button type="button" role="tab" data-tab="menu" aria-selected="true">메뉴 관리</button>
-          <button type="button" role="tab" data-tab="members" aria-selected="false">회원 목록</button>
-          <span class="adm-who">${esc(me.nickname)} 님 · 관리자</span>
-        </div>
-        <div data-panel="menu">
+      ctx.$('[data-panel="menu"]').innerHTML = `
           <div class="adm-grid">
             <aside class="adm-list">
               <div class="adm-tools">
@@ -196,9 +285,7 @@
             </aside>
             <section class="adm-form" id="form"></section>
           </div>
-          <div class="adm-save"><span id="save-msg">바뀐 내용이 없어요.</span><button type="button" class="btn primary" id="save" disabled>홈페이지에 저장</button></div>
-        </div>
-        <div data-panel="members" hidden><p class="loading">회원 목록을 불러오는 중…</p></div>`;
+          <div class="adm-save"><span id="save-msg">바뀐 내용이 없어요.</span><button type="button" class="btn primary" id="save" disabled>홈페이지에 저장</button></div>`;
 
       const listEl = ctx.$("#list"), formEl = ctx.$("#form"), msgEl = ctx.$("#save-msg"), saveBtn = ctx.$("#save");
       const setMsg = (t, cls = "") => { msgEl.textContent = t; msgEl.className = cls; };
@@ -329,22 +416,6 @@
         }
       });
       addEventListener("beforeunload", e => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
-
-      /* 탭 · 회원 목록 */
-      let membersLoaded = false;
-      ctx.$$(".adm-tabs [data-tab]").forEach(b => b.addEventListener("click", async () => {
-        ctx.$$(".adm-tabs [data-tab]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
-        ctx.$$("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== b.dataset.tab; });
-        if (b.dataset.tab !== "members" || membersLoaded) return;
-        const panel = ctx.$('[data-panel="members"]');
-        try {
-          const r = await api(ctx, "/api/admin/members");
-          membersLoaded = true;
-          panel.innerHTML = `<p class="adm-count">전체 회원 <b>${r.total.toLocaleString("ko-KR")}</b>명</p>
-            <div class="table-wrap"><table class="adm-table"><thead><tr><th>닉네임</th><th>로그인 방식</th><th>가입일</th><th>최근 로그인</th><th>회원번호</th></tr></thead>
-            <tbody>${r.members.map(m => `<tr><td>${esc(m.nickname)}${m.isAdmin ? ' <span class="chip good">관리자</span>' : ""}</td><td>${esc(PROVIDER[m.provider] || m.provider)}</td><td>${fmtDate(m.createdAt)}</td><td>${fmtTime(m.lastLogin)}</td><td><code>${esc(m.id)}</code></td></tr>`).join("") || `<tr><td colspan="5" class="none">아직 회원이 없어요.</td></tr>`}</tbody></table></div>`;
-        } catch (err) { panel.innerHTML = `<div class="notice warn">${esc(err.message)}</div>`; }
-      }));
 
       renderList(); renderForm();
     }

@@ -2,6 +2,7 @@
    혜화담 로그인 · 관리자 서버 (Cloudflare Worker)
    - 카카오 · 네이버 로그인, 회원 목록(D1 데이터베이스)
    - 관리자: 메뉴 · 사진 · 설명 수정 → GitHub 저장소의 data/menu.json 에 저장
+   - 예약 · 문의 접수(메뉴 상세 · 떡체험 화면의 폼) → D1 에 저장, 관리자 화면에서 확인
    이 파일 하나를 Cloudflare 대시보드의 Worker 편집기에 그대로 붙여 넣으면 됩니다.
    설정 방법은 저장소의 「로그인_관리자_설정안내.md」를 보세요.
 
@@ -56,11 +57,16 @@ async function route(req, env) {
 
   if (path.startsWith("/api/")) {
     checkConfig(env);
+    /* 예약·문의 접수 — 로그인 없이도 가능 (로그인했다면 회원번호를 함께 저장) */
+    if (path === "/api/inquiries" && req.method === "POST") return json(await createInquiry(req, env), 200, req, env);
     const user = await requireUser(req, env);
     if (path === "/api/me" && req.method === "GET") return json(await getMe(user, env), 200, req, env);
+    if (path === "/api/me/inquiries" && req.method === "GET") return json(await myInquiries(user, env), 200, req, env);
     if (path === "/api/me" && req.method === "DELETE") {
       await ensureTable(env);
       await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(user.sub).run();
+      await ensureInquiryTable(env);
+      await env.DB.prepare("UPDATE inquiries SET member_id = NULL WHERE member_id = ?").bind(user.sub).run();
       return json({ ok: true }, 200, req, env);
     }
     if (path.startsWith("/api/admin/")) {
@@ -69,6 +75,10 @@ async function route(req, env) {
       if (path === "/api/admin/menu" && req.method === "GET") return json(await getMenu(env), 200, req, env);
       if (path === "/api/admin/menu" && req.method === "PUT") return json(await saveMenu(await readBody(req, 1_000_000), user, env), 200, req, env);
       if (path === "/api/admin/image" && req.method === "POST") return json(await saveImage(await readBody(req, 4_000_000), user, env), 200, req, env);
+      if (path === "/api/admin/inquiries" && req.method === "GET") return json(await listInquiries(env), 200, req, env);
+      const inq = path.match(/^\/api\/admin\/inquiries\/(\d{1,12})$/);
+      if (inq && req.method === "PATCH") return json(await updateInquiry(Number(inq[1]), await readBody(req, 5000), env), 200, req, env);
+      if (inq && req.method === "DELETE") return json(await deleteInquiry(Number(inq[1]), env), 200, req, env);
     }
   }
   throw new HttpError(404, "not_found", "없는 주소예요.");
@@ -99,7 +109,7 @@ function preflight(req, env) {
   if (!o) return new Response(null, { status: 403 });
   return new Response(null, { status: 204, headers: {
     "Access-Control-Allow-Origin": o, "Vary": "Origin",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "86400"
   } });
@@ -255,7 +265,13 @@ async function getMe(user, env) {
   await ensureTable(env);
   const row = await env.DB.prepare("SELECT id, provider, nickname, created_at, last_login FROM members WHERE id = ?").bind(user.sub).first();
   if (!row) throw new HttpError(401, "login_required", "회원 정보가 없어요. 다시 로그인해 주세요.");
-  return { id: row.id, provider: row.provider, nickname: row.nickname, createdAt: row.created_at, lastLogin: row.last_login, isAdmin: isAdmin(env, row.id) };
+  const me = { id: row.id, provider: row.provider, nickname: row.nickname, createdAt: row.created_at, lastLogin: row.last_login, isAdmin: isAdmin(env, row.id) };
+  if (me.isAdmin) {
+    await ensureInquiryTable(env);
+    const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM inquiries WHERE status = 'new'").first();
+    me.newInquiries = c ? c.n : 0;
+  }
+  return me;
 }
 async function listMembers(env) {
   await ensureTable(env);
@@ -360,4 +376,108 @@ async function saveImage(body, user, env) {
   const path = `assets/images/uploads/${id}-${stamp}-${randomHex(2)}.jpg`;
   await putFile(env, path, bytes, `관리자 사진 추가 ${id} (${user.nk || user.sub})`);
   return { ok: true, path };
+}
+
+/* ---------- 예약 · 문의 ---------- */
+const INQ_STATUS = ["new", "done", "canceled"];
+const KEEP_DAYS = 365; /* 처리(완료·취소)된 예약·문의는 1년 뒤 자동 삭제 — 개인정보처리방침과 같게 */
+let inqReady = false;
+async function ensureInquiryTable(env) {
+  if (inqReady) return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS inquiries (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, kind TEXT NOT NULL, " +
+    "item_id TEXT, item_name TEXT, name TEXT NOT NULL, phone TEXT NOT NULL, want_date TEXT, want_time TEXT, people INTEGER, message TEXT, " +
+    "member_id TEXT, status TEXT NOT NULL DEFAULT 'new', memo TEXT, ip_hash TEXT, updated_at TEXT)"
+  ).run();
+  inqReady = true;
+}
+async function optionalUser(req, env) {
+  const m = (req.headers.get("Authorization") || "").match(/^Bearer\s+(\S+)$/);
+  return m ? await verifyToken(m[1], env.SESSION_SECRET, "session") : null;
+}
+async function ipHash(req, env) {
+  const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", await hmacKey(env.SESSION_SECRET), enc.encode("ip:" + ip)));
+  return [...sig.slice(0, 8)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+const kstToday = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+
+async function createInquiry(req, env) {
+  const b = await readBody(req, 20000);
+  const bad = msg => { throw new HttpError(400, "invalid", msg); };
+  if (!b || typeof b !== "object") bad("요청 형식이 잘못됐어요.");
+  if (b.website) return { ok: true, id: 0 }; /* 스팸 로봇용 숨은 칸 — 사람은 비워 둠 */
+  const kind = b.kind === "reserve" ? "reserve" : "inquiry";
+  const name = str(b.name, 30);
+  if (!name) bad("이름을 입력해 주세요.");
+  const phone = str(b.phone, 20);
+  const digits = phone.replace(/\D/g, "");
+  if (!/^0\d{8,10}$/.test(digits) || /[^\d\s-]/.test(phone)) bad("연락처를 정확히 입력해 주세요. 예: 010-1234-5678");
+  const date = str(b.date, 10);
+  if (date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(Date.parse(date + "T00:00:00Z"))) bad("날짜를 다시 골라 주세요.");
+    if (date < kstToday()) bad("지난 날짜는 고를 수 없어요.");
+  } else if (kind === "reserve") bad("희망 날짜를 골라 주세요.");
+  const time = str(b.time, 5);
+  if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) bad("시간을 다시 골라 주세요.");
+  let people = null;
+  if (b.people !== undefined && b.people !== null && b.people !== "") {
+    people = Number(b.people);
+    if (!Number.isInteger(people) || people < 1 || people > 1000) bad("인원·수량은 1~1000 사이 숫자로 입력해 주세요.");
+  }
+  const message = str(b.message, 1000);
+  if (kind === "inquiry" && !message) bad("문의 내용을 입력해 주세요.");
+  if (b.agree !== true) bad("개인정보 수집·이용에 동의해 주세요.");
+  const itemId = str(b.itemId, 24);
+  if (itemId && !/^[a-z0-9-]{1,24}$/.test(itemId)) bad("메뉴 정보가 잘못됐어요.");
+  const itemName = str(b.itemName, 80);
+
+  await ensureInquiryTable(env);
+  const ih = await ipHash(req, env);
+  const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM inquiries WHERE ip_hash = ? AND created_at > ?").bind(ih, since).first();
+  if (recent && recent.n >= 5) throw new HttpError(429, "too_many", "짧은 시간에 너무 많이 보냈어요. 잠시 후 다시 시도해 주세요.");
+
+  const user = await optionalUser(req, env);
+  const r = await env.DB.prepare(
+    "INSERT INTO inquiries (created_at, kind, item_id, item_name, name, phone, want_date, want_time, people, message, member_id, status, ip_hash) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)"
+  ).bind(new Date().toISOString(), kind, itemId || null, itemName || null, name, digits.replace(/^(\d{2,3})(\d{3,4})(\d{4})$/, "$1-$2-$3"), date || null, time || null, people, message || null, user ? user.sub : null, ih).run();
+  return { ok: true, id: r && r.meta ? r.meta.last_row_id : 0 };
+}
+
+const inqOut = (r, full) => {
+  const o = { id: r.id, createdAt: r.created_at, kind: r.kind, itemId: r.item_id, itemName: r.item_name, date: r.want_date, time: r.want_time, people: r.people, message: r.message, status: r.status };
+  if (full) Object.assign(o, { name: r.name, phone: r.phone, memberId: r.member_id, memo: r.memo, updatedAt: r.updated_at });
+  return o;
+};
+async function listInquiries(env) {
+  await ensureInquiryTable(env);
+  const cutoff = new Date(Date.now() - KEEP_DAYS * 86400 * 1000).toISOString();
+  await env.DB.prepare("DELETE FROM inquiries WHERE status != 'new' AND created_at < ?").bind(cutoff).run();
+  const r = await env.DB.prepare("SELECT * FROM inquiries ORDER BY id DESC LIMIT 500").all();
+  const counts = await env.DB.prepare("SELECT status, COUNT(*) AS n FROM inquiries GROUP BY status").all();
+  const c = { new: 0, done: 0, canceled: 0 };
+  for (const x of counts.results || []) if (x.status in c) c[x.status] = x.n;
+  return { counts: c, inquiries: (r.results || []).map(x => inqOut(x, true)) };
+}
+async function updateInquiry(id, body, env) {
+  await ensureInquiryTable(env);
+  const row = await env.DB.prepare("SELECT id, status, memo FROM inquiries WHERE id = ?").bind(id).first();
+  if (!row) throw new HttpError(404, "not_found", "이미 삭제된 예약·문의예요.");
+  const status = body && body.status !== undefined ? String(body.status) : row.status;
+  if (!INQ_STATUS.includes(status)) throw new HttpError(400, "invalid", "상태 값이 잘못됐어요.");
+  const memo = body && body.memo !== undefined ? str(body.memo, 500) : row.memo;
+  await env.DB.prepare("UPDATE inquiries SET status = ?, memo = ?, updated_at = ? WHERE id = ?").bind(status, memo || null, new Date().toISOString(), id).run();
+  return { ok: true };
+}
+async function deleteInquiry(id, env) {
+  await ensureInquiryTable(env);
+  await env.DB.prepare("DELETE FROM inquiries WHERE id = ?").bind(id).run();
+  return { ok: true };
+}
+async function myInquiries(user, env) {
+  await ensureInquiryTable(env);
+  const r = await env.DB.prepare("SELECT * FROM inquiries WHERE member_id = ? ORDER BY id DESC LIMIT 50").bind(user.sub).all();
+  return { inquiries: (r.results || []).map(x => inqOut(x, false)) };
 }

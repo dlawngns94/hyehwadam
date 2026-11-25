@@ -57,7 +57,8 @@
     search: `<svg viewBox="0 0 24 24" ${S}><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></svg>`,
     up: `<svg viewBox="0 0 24 24" ${S}><path d="M6 14l6-6 6 6"/></svg>`,
     store: `<svg viewBox="0 0 24 24" ${S}><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M10 20v-5h4v5"/></svg>`,
-    user: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>`
+    user: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>`,
+    note: `<svg viewBox="0 0 24 24" ${S}><rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 2v4M16 2v4M4 10h16M8 14h3M8 17h6"/></svg>`
   };
   /* 회원 기능 — data/site.json 의 auth.api 에 서버 주소가 있을 때만 켜짐 */
   const apiBase = () => String((SITE.auth && SITE.auth.api) || "").replace(/\/+$/, "");
@@ -243,7 +244,8 @@
     const temps = (m.temp || []).map(t => `<span class="tag ${t}">${t === "hot" ? "HOT" : "ICED"}</span>`).join("");
     const actions = [
       m.link === "class.html" ? `<a class="btn primary" href="class.html">떡체험 자세히 보기</a>` : "",
-      `<a class="btn${m.link ? "" : " primary"}" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 문의</a>`,
+      apiBase() && !m.link ? `<a class="btn primary" href="#inquiry">${UI.note} ${inqKind(m) === "reserve" ? "예약 · 문의 남기기" : "문의 남기기"}</a>` : "",
+      `<a class="btn${m.link || apiBase() ? "" : " primary"}" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 문의</a>`,
       `<a class="btn" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">${UI.insta} 인스타그램 DM</a>`,
       m.cat === "tteok" ? `<a class="btn" href="${esc(SITE.links.smartstore)}" target="_blank" rel="noopener">스마트스토어</a>` : ""
     ].join("");
@@ -263,8 +265,101 @@
           <p class="note">${m.soldout ? "지금은 품절이에요. " : ""}가격과 구성은 계절·재료 상황에 따라 바뀔 수 있어요.</p>
         </div>
       </div>
+      ${m.link ? "" : inquiryForm(m)}
       ${related.length ? `<section class="group"><div class="group-head"><small>MORE</small><h2>${esc(c.name)} 다른 메뉴</h2></div><div class="grid">${related.map(card).join("")}</div></section>` : ""}
     </div>`;
+  }
+
+  /* ---------- 공통 블록: 예약 · 문의 폼 (서버가 연결됐을 때만 보임) ---------- */
+  const inqKind = m => ["tteok", "order"].includes(m.cat) ? "reserve" : "inquiry";
+  const kstToday = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  function inquiryForm(m, force) {
+    if (!apiBase()) return "";
+    const k = force || inqKind(m);
+    return `<section class="inq" id="inquiry">
+      <div class="inq-head"><small>RESERVATION · INQUIRY</small><h2>예약 · 문의하기</h2>
+        <p>${lines(["남겨 주시면 확인 후 연락드려요.", "급한 예약은 전화가 가장 빨라요."])}</p></div>
+      <form class="inq-form" novalidate data-item="${esc(m.id)}" data-name="${esc(m.name)}">
+        <div class="seg" role="radiogroup" aria-label="종류">
+          <label><input type="radio" name="kind" value="reserve"${k === "reserve" ? " checked" : ""}><span>예약 · 주문</span></label>
+          <label><input type="radio" name="kind" value="inquiry"${k === "inquiry" ? " checked" : ""}><span>문의</span></label>
+        </div>
+        <p class="inq-item">선택한 메뉴 <b>${esc(m.name)}</b></p>
+        <div class="fld-row">
+          <label class="fld"><span>이름 *</span><input name="name" maxlength="30" autocomplete="name"></label>
+          <label class="fld"><span>연락처 *</span><input name="phone" type="tel" inputmode="tel" maxlength="13" placeholder="010-1234-5678" autocomplete="tel"></label>
+        </div>
+        <div class="fld-row r3" data-for="reserve">
+          <label class="fld"><span>희망 날짜 *</span><input name="date" type="date" min="${kstToday()}"></label>
+          <label class="fld"><span>희망 시간</span><input name="time" type="time" step="600"></label>
+          <label class="fld"><span>인원 · 수량</span><input name="people" type="number" min="1" max="1000" inputmode="numeric" placeholder="예: 20"></label>
+        </div>
+        <label class="fld"><span class="msg-label">요청 사항</span><textarea name="message" rows="4" maxlength="1000" placeholder="예: 답례품 포장 원해요, 알레르기가 있어요"></textarea></label>
+        <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <div class="agree">
+          <label><input type="checkbox" name="agree"> <span><b>[필수]</b> 개인정보 수집·이용에 동의합니다.</span></label>
+          <details><summary>내용 보기</summary><ul>
+            <li>수집 항목: 이름, 연락처, 희망 날짜·시간, 인원·수량, 요청 내용</li>
+            <li>이용 목적: 예약·문의 확인 및 연락</li>
+            <li>보유 기간: 처리 완료 후 1년 (이후 자동 삭제)</li>
+            <li>동의하지 않으셔도 되며, 이 경우 전화(${esc(SITE.store.tel)})로 예약·문의하실 수 있어요.</li>
+          </ul></details>
+        </div>
+        <p class="inq-err" role="alert" hidden></p>
+        <button class="btn primary inq-submit" type="submit">보내기</button>
+      </form></section>`;
+  }
+  function bindInquiry() {
+    const form = $(".inq-form"); if (!form) return;
+    const errEl = $(".inq-err", form), btn = $(".inq-submit", form);
+    const showErr = (msg, field) => { errEl.textContent = msg; errEl.hidden = false; if (field) { const f = form.elements[field]; if (f) f.focus(); } };
+    const syncKind = () => {
+      const k = form.elements.kind.value;
+      $$('[data-for="reserve"]', form).forEach(el => { el.hidden = k !== "reserve"; });
+      $(".msg-label", form).textContent = k === "reserve" ? "요청 사항" : "문의 내용 *";
+      form.elements.message.placeholder = k === "reserve" ? "예: 답례품 포장 원해요, 알레르기가 있어요" : "궁금하신 내용을 적어 주세요";
+    };
+    $$('input[name="kind"]', form).forEach(r => r.addEventListener("change", syncKind));
+    syncKind();
+    form.elements.phone.addEventListener("input", e => {
+      const d = e.target.value.replace(/\D/g, "").slice(0, 11);
+      e.target.value = d.length < 4 ? d : d.length < 8 ? d.replace(/^(\d{3})(\d+)/, "$1-$2")
+        : d.startsWith("02") ? d.replace(/^(02)(\d{3,4})(\d{4})$/, "$1-$2-$3") : d.replace(/^(\d{3})(\d{3,4})(\d{4})$/, "$1-$2-$3");
+    });
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      errEl.hidden = true;
+      const f = form.elements, kind = f.kind.value;
+      const body = {
+        kind, itemId: form.dataset.item, itemName: form.dataset.name,
+        name: f.name.value.trim(), phone: f.phone.value.trim(),
+        date: kind === "reserve" ? f.date.value : "", time: kind === "reserve" ? f.time.value : "",
+        people: kind === "reserve" && f.people.value !== "" ? Number(f.people.value) : null,
+        message: f.message.value.trim(), agree: f.agree.checked, website: f.website.value
+      };
+      if (!body.name) return showErr("이름을 입력해 주세요.", "name");
+      if (!/^0\d{8,10}$/.test(body.phone.replace(/\D/g, ""))) return showErr("연락처를 정확히 입력해 주세요. 예: 010-1234-5678", "phone");
+      if (kind === "reserve" && !body.date) return showErr("희망 날짜를 골라 주세요.", "date");
+      if (kind === "reserve" && body.date < kstToday()) return showErr("지난 날짜는 고를 수 없어요.", "date");
+      if (kind === "inquiry" && !body.message) return showErr("문의 내용을 입력해 주세요.", "message");
+      if (!body.agree) return showErr("개인정보 수집·이용에 동의해 주세요.", "agree");
+      btn.disabled = true; btn.textContent = "보내는 중…";
+      const headers = { "Content-Type": "application/json" };
+      try { const tk = localStorage.getItem("hd_token"); if (tk) headers.Authorization = "Bearer " + tk; } catch { /* 무시 */ }
+      try {
+        const res = await fetch(apiBase() + "/api/inquiries", { method: "POST", headers, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "보내지 못했어요. 잠시 후 다시 시도해 주세요.");
+        const when = kind === "reserve" ? [body.date, body.time].filter(Boolean).join(" ") + (body.people ? ` · ${body.people}명/개` : "") : "";
+        form.outerHTML = `<div class="inq-done" role="status"><b>${kind === "reserve" ? "예약 요청이" : "문의가"} 접수됐어요.</b>
+          <p>${lines(["확인 후 남겨 주신 연락처로 연락드릴게요.", "급한 경우 전화 주시면 더 빨라요."])}</p>
+          <dl><div><dt>메뉴</dt><dd>${esc(body.itemName)}</dd></div>${when ? `<div><dt>희망 일시</dt><dd>${esc(when)}</dd></div>` : ""}<div><dt>연락처</dt><dd>${esc(body.phone)}</dd></div></dl>
+          <a class="btn" href="${telHref(SITE.store.tel)}">${UI.phone} ${esc(SITE.store.tel)}</a></div>`;
+      } catch (err) {
+        btn.disabled = false; btn.textContent = "보내기";
+        showErr(err.message === "Failed to fetch" ? "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요." : err.message);
+      }
+    });
   }
 
   /* ---------- 공통 블록: 매장 정보 ---------- */
@@ -314,9 +409,10 @@
       <dl class="info">
         <div><dt>대상</dt><dd>어린이 · 가족 · 관광객 · 단체 (단체 환영)</dd></div>
         <div><dt>비용</dt><dd>${priceText(item.price)} — 인원과 구성에 따라 달라요</dd></div>
-        <div><dt>예약</dt><dd>전화 <a href="${telHref(SITE.store.tel)}">${esc(SITE.store.tel)}</a> 또는 인스타그램 DM</dd></div>
+        <div><dt>예약</dt><dd>${apiBase() ? `<a href="#inquiry">아래 예약 폼</a>, ` : ""}전화 <a href="${telHref(SITE.store.tel)}">${esc(SITE.store.tel)}</a> 또는 인스타그램 DM</dd></div>
         <div><dt>장소</dt><dd>${esc(SITE.store.address)}</dd></div>
       </dl>
+      ${inquiryForm({ id: item.id || "o01", name: item.name || "떡체험", cat: "order" }, "reserve")}
       <div class="cta"><p>${lines(["원하시는 날짜와 인원을 알려 주시면", "일정을 안내해 드려요"])}</p><div class="btns"><a class="btn primary" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 예약</a><a class="btn" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">${UI.insta} 인스타그램 DM</a></div></div>
     </article></div>`;
   }
@@ -328,17 +424,19 @@
       <p>${esc(co.corpName)}(이하 '혜화담')은 「개인정보 보호법」에 따라 회원의 개인정보를 보호하고, 관련 고충을 신속하게 처리하기 위해 다음과 같이 개인정보처리방침을 둡니다.</p>
       <h2>1. 수집하는 개인정보와 수집 방법</h2>
       <ul><li>카카오 또는 네이버 로그인 시: 회원번호(카카오·네이버가 발급한 고유 식별값), 닉네임</li>
-        <li>서비스 이용 과정에서 자동 생성: 가입일시, 최근 로그인 일시</li>
-        <li>혜화담은 이름, 전화번호, 이메일, 비밀번호를 받지 않습니다.</li></ul>
+        <li>예약·문의 폼 작성 시: 이름, 연락처, 희망 날짜·시간, 인원·수량, 요청 내용</li>
+        <li>서비스 이용 과정에서 자동 생성: 가입·로그인 일시, 예약·문의 접수 일시, 스팸 방지를 위한 접속 정보의 암호화 값</li>
+        <li>혜화담은 이메일, 비밀번호를 받지 않습니다.</li></ul>
       <h2>2. 이용 목적</h2>
-      <ul><li>회원 식별과 로그인 유지</li><li>회원 관리(가입·탈퇴 처리)</li></ul>
+      <ul><li>회원 식별과 로그인 유지</li><li>회원 관리(가입·탈퇴 처리)</li><li>예약·문의 확인 및 연락</li></ul>
       <h2>3. 보유 및 이용 기간</h2>
-      <p>회원 탈퇴 시까지 보관하며, 탈퇴하면 지체 없이 삭제합니다. 탈퇴는 [내 정보] 화면의 '회원 탈퇴'에서 언제든 할 수 있습니다.</p>
+      <ul><li>회원 정보: 회원 탈퇴 시까지 보관하며, 탈퇴하면 지체 없이 삭제합니다. 탈퇴는 [내 정보] 화면의 '회원 탈퇴'에서 언제든 할 수 있습니다.</li>
+        <li>예약·문의 정보: 처리(완료·취소)한 날로부터 1년이 지나면 자동으로 삭제합니다. 그 전에 삭제를 원하시면 전화로 요청해 주세요.</li></ul>
       <h2>4. 제3자 제공</h2>
       <p>혜화담은 회원의 개인정보를 제3자에게 제공하지 않습니다.</p>
       <h2>5. 처리 위탁 및 국외 이전</h2>
       <ul><li>수탁자: Cloudflare, Inc. (미국)</li><li>위탁 업무: 회원 정보 저장 및 로그인 서버 운영</li>
-        <li>이전 항목: 회원번호, 닉네임, 가입·로그인 일시</li><li>이전 시기·방법: 로그인 시 네트워크를 통해 전송</li><li>보유 기간: 회원 탈퇴 시까지</li></ul>
+        <li>이전 항목: 회원번호, 닉네임, 가입·로그인 일시, 예약·문의 내용(이름, 연락처, 희망 일시, 인원, 요청 내용)</li><li>이전 시기·방법: 로그인·예약·문의 시 네트워크를 통해 전송</li><li>보유 기간: 3번의 보유 기간과 같음</li></ul>
       <h2>6. 회원의 권리</h2>
       <p>회원은 언제든지 자신의 개인정보를 조회하거나 삭제(탈퇴)를 요청할 수 있습니다. 카카오·네이버와의 연결 해제는 각 서비스의 계정 설정에서 할 수 있습니다.</p>
       <h2>7. 안전성 확보 조치</h2>
@@ -376,6 +474,7 @@
     bindChrome();
     if (PAGE === "home") bindSlider();
     if (PAGE === "menu") bindMenu();
+    if (PAGE === "item" || PAGE === "class") bindInquiry();
     if (ext && ext.bind) ext.bind(ctx);
   }
   boot();

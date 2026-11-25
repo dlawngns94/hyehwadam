@@ -414,3 +414,83 @@ code,.mid{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:
   .f-photo .t{width:96px;height:96px}
   .adm-who{width:100%;margin:0 0 8px}
 }
+
+/* =========================================================
+   예약 · 문의 폼 (메뉴 상세 · 떡체험)
+   ========================================================= */
+.inq{max-width:760px;margin:56px auto 0;border:1px solid var(--line);border-radius:16px;padding:32px;background:var(--cream);scroll-margin-top:calc(var(--head) + 16px)}
+.inq-head{text-align:center;margin-bottom:20px}
+.inq-head small{font-size:12px;letter-spacing:.3em;color:var(--brand);font-weight:700}
+.inq-head h2{font-family:var(--display);font-size:26px;color:var(--brand-deep);margin:6px 0 8px}
+.inq-head p{color:var(--sub);margin:0;font-size:14.5px}
+.inq-form{display:grid;gap:14px}
+.inq-form .fld-row.r3{grid-template-columns:1.3fr 1fr 1fr}
+.inq-form .fld input,.inq-form .fld textarea{background:#fff}
+.inq-form .fld textarea{min-height:100px}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px;gap:4px}
+.seg label{cursor:pointer}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg span{display:block;text-align:center;padding:10px;border-radius:7px;font-weight:700;color:var(--sub);transition:.15s}
+.seg input:checked + span{background:var(--brand);color:#fff}
+.seg input:focus-visible + span{outline:2px solid var(--brand);outline-offset:2px}
+.inq-item{margin:0;font-size:14px;color:var(--sub)}
+.inq-item b{color:var(--brand-deep);margin-left:6px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.agree{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14px}
+.agree label{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
+.agree input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--brand);flex:none}
+.agree b{color:var(--brand)}
+.agree details{margin:8px 0 0 26px;color:var(--sub);font-size:13px}
+.agree summary{cursor:pointer;color:var(--mute);text-decoration:underline;width:fit-content}
+.agree ul{margin:8px 0 0;padding-left:18px;line-height:1.7}
+.inq-err{margin:0;color:#b4432f;font-weight:700;font-size:14px;text-align:center}
+.inq-submit{width:100%;height:52px;font-size:16px}
+.inq-done{text-align:center;background:#fff;border-radius:12px;padding:28px 20px}
+.inq-done > b{display:block;font-family:var(--display);font-size:22px;color:var(--brand-deep);margin-bottom:8px}
+.inq-done p{color:var(--sub);margin:0 0 16px}
+.inq-done dl{display:grid;gap:6px;max-width:360px;margin:0 auto 18px;text-align:left;font-size:14px}
+.inq-done dl div{display:grid;grid-template-columns:80px 1fr;gap:8px}
+.inq-done dt{color:var(--mute)}
+.inq-done dd{margin:0;color:var(--ink)}
+.prose .inq p{margin:0}
+.prose .inq .inq-head p{margin:0}
+.prose .inq-done p{margin:0 0 16px}
+
+/* 관리자: 예약·문의 */
+.badge-n{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--pink);color:#fff;font-size:12px;font-weight:700;margin-left:6px;vertical-align:1px}
+.inq-filter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.inq-filter button{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13.5px;font-weight:700;color:var(--sub)}
+.inq-filter button[aria-pressed="true"]{background:var(--brand-deep);border-color:var(--brand-deep);color:#fff}
+.inq-list{display:grid;gap:12px}
+.inq-card{border:1px solid var(--line);border-radius:12px;background:#fff;padding:18px 20px;display:grid;gap:10px}
+.inq-card.st-new{border-color:#e9b9c1;box-shadow:inset 4px 0 0 var(--pink)}
+.inq-card .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.inq-card .top time{margin-left:auto;font-size:12.5px;color:var(--mute)}
+.st{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:700}
+.st.new{background:#fde8ec;color:#b03a52}
+.st.done{background:var(--brand-soft);color:var(--brand-deep)}
+.st.canceled{background:#eee;color:#777}
+.kind{font-size:12.5px;font-weight:700;color:var(--sub);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+.inq-card h3{margin:0;font-size:16px}
+.inq-card dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 16px;margin:0;font-size:14px}
+.inq-card dl div{display:flex;gap:8px}
+.inq-card dt{color:var(--mute);flex:none}
+.inq-card dd{margin:0;min-width:0}
+.inq-card dd a{color:var(--brand);font-weight:700}
+.inq-card .msg{margin:0;padding:10px 12px;background:var(--cream);border-radius:8px;font-size:14px;white-space:pre-wrap}
+.inq-card .memo{display:flex;gap:6px}
+.inq-card .memo input{flex:1;min-width:0;height:36px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font:inherit;font-size:13.5px}
+.inq-card .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.inq-card .acts .link-btn{margin-left:auto}
+.my-inq{margin-top:28px;text-align:left}
+.my-inq h3{font-size:16px;margin:0 0 10px;color:var(--brand-deep)}
+.my-inq ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.my-inq li{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.my-inq li small{color:var(--mute);margin-left:auto}
+@media (max-width:760px){
+  .inq{padding:22px 16px;margin-top:40px}
+  .inq-form .fld-row.r3{grid-template-columns:1fr 1fr}
+  .inq-form .fld-row.r3 .fld:first-child{grid-column:1 / -1}
+  .inq-card{padding:16px}
+  .inq-card .top time{width:100%;margin-left:0}
+}
