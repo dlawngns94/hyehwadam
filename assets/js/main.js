@@ -92,7 +92,7 @@
         <div class="h-util">
           <a class="icon-btn ext" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener" aria-label="인스타그램">${UI.insta}</a>
           <a class="icon-btn ext" href="store.html" aria-label="매장 안내">${UI.pin}</a>
-          ${apiBase() ? `<a class="icon-btn" href="${loggedIn() ? "mypage.html" : "login.html"}" aria-label="${loggedIn() ? "내 정보" : "로그인"}">${UI.user}</a>` : ""}
+          <a class="icon-btn" href="${loggedIn() ? "mypage.html" : "login.html"}" aria-label="${loggedIn() ? "내 정보" : "로그인"}">${UI.user}</a>
           <button class="icon-btn menu-toggle" type="button" aria-label="메뉴 열기" aria-expanded="false">${UI.menu}</button>
         </div>
       </div></header>
@@ -104,7 +104,7 @@
         <a class="d-link" href="store.html">매장 안내</a>
         <a class="d-link" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">인스타그램</a>
         <a class="d-link" href="${esc(SITE.links.smartstore)}" target="_blank" rel="noopener">스마트스토어</a>
-        ${apiBase() ? `<a class="d-link" href="${loggedIn() ? "mypage.html" : "login.html"}">${loggedIn() ? "내 정보" : "로그인"}</a>` : ""}
+        <a class="d-link" href="${loggedIn() ? "mypage.html" : "login.html"}">${loggedIn() ? "내 정보" : "로그인"}</a>
       </nav></div>`;
   }
   function footer() {

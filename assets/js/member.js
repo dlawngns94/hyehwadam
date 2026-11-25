@@ -43,17 +43,19 @@
       const next = NEXT[new URLSearchParams(location.search).get("next")] ? new URLSearchParams(location.search).get("next") : "mypage";
       const btn = p => ctx.API
         ? `<a class="sns ${p}" href="${ctx.esc(ctx.API)}/auth/${p}/start?next=${next}">${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></a>`
-        : `<span class="sns ${p}" aria-disabled="true">${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></span>`;
+        : `<button type="button" class="sns ${p}" data-soon>${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></button>`;
       return ctx.subTop("로그인", [{ name: "로그인" }]) + `<div class="wrap"><div class="auth-box">
         <h2>혜화담 회원 로그인</h2>
         <p class="auth-sub">${ctx.lines(["카카오 또는 네이버 계정으로", "간편하게 로그인하세요."])}</p>
-        <div id="auth-msg">${ctx.API ? "" : notReady(ctx)}</div>
+        <div id="auth-msg"></div>
         <div class="sns-list">${btn("kakao")}${btn("naver")}</div>
         <p class="fine">${ctx.lines(["혜화담은 회원 확인을 위해 닉네임과 회원번호만 저장합니다.", "로그인하면 개인정보처리방침에 동의하는 것으로 봅니다."])}<a href="privacy.html">개인정보처리방침 보기</a></p>
       </div></div>`;
     },
     bind(ctx) {
       const box = ctx.$("#auth-msg");
+      /* 서버 연결 전: 버튼은 보이되, 누르면 준비 중 안내 */
+      ctx.$$("[data-soon]").forEach(el => el.addEventListener("click", () => { box.innerHTML = notReady(ctx); }));
       const hash = new URLSearchParams(location.hash.slice(1));
       const next = new URLSearchParams(location.search).get("next");
       if (hash.get("token")) {
