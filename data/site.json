@@ -32,7 +32,7 @@
   },
 
   "auth": {
-    "api": ""
+    "api": "https://hyehwadam-api.929929.workers.dev"
   },
 
   "privacy": {
