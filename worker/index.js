@@ -89,6 +89,9 @@ async function route(req, env, ctx) {
       if (path === "/api/admin/menu" && req.method === "PUT") return json(await saveMenu(await readBody(req, 1_000_000), user, env), 200, req, env);
       if (path === "/api/admin/image" && req.method === "POST") return json(await saveImage(await readBody(req, 4_000_000), user, env), 200, req, env);
       if (path === "/api/admin/inquiries" && req.method === "GET") return json(await listInquiries(env), 200, req, env);
+      if (path === "/api/admin/kakao-notify" && req.method === "GET") return json(await kakaoNotifyStatus(user, env), 200, req, env);
+      if (path === "/api/admin/kakao-notify" && req.method === "DELETE") return json(await kakaoNotifyUnlink(user, env), 200, req, env);
+      if (path === "/api/admin/kakao-notify/test" && req.method === "POST") return json(await sendKakaoMemo(env, "[혜화담] 카톡 알림 시험\n이 메시지가 보이면 새 예약 알림이 이 채팅방으로 와요.", user.sub), 200, req, env);
       if (path === "/api/admin/slots" && req.method === "GET") return json(await adminSlots(url, env), 200, req, env);
       if (path === "/api/admin/slots" && req.method === "POST") return json(await createSlots(await readBody(req, 10000), env), 200, req, env);
       const slot = path.match(/^\/api\/admin\/slots\/(\d{1,12})$/);
@@ -188,7 +191,11 @@ const now = () => Math.floor(Date.now() / 1000);
 const PROVIDERS = {
   kakao: {
     ready: env => !!env.KAKAO_REST_KEY,
-    authorize: (env, redirectUri, state) => "https://kauth.kakao.com/oauth/authorize?" + new URLSearchParams({ client_id: env.KAKAO_REST_KEY, redirect_uri: redirectUri, response_type: "code", state }),
+    authorize: (env, redirectUri, state, opt = {}) => "https://kauth.kakao.com/oauth/authorize?" + new URLSearchParams({
+      client_id: env.KAKAO_REST_KEY, redirect_uri: redirectUri, response_type: "code", state,
+      ...(opt.relogin ? { prompt: "login" } : {}),            /* 로그아웃 후: 카카오 로그인 화면을 다시 띄워 다른 계정 선택 가능 */
+      ...(opt.notify ? { scope: "talk_message" } : {})        /* 사장님 '나에게 보내기' 권한 */
+    }),
     async profile(env, code, redirectUri) {
       const body = new URLSearchParams({ grant_type: "authorization_code", client_id: env.KAKAO_REST_KEY, redirect_uri: redirectUri, code });
       if (env.KAKAO_CLIENT_SECRET) body.set("client_secret", env.KAKAO_CLIENT_SECRET);
@@ -199,12 +206,15 @@ const PROVIDERS = {
       const uj = await u.json().catch(() => ({}));
       if (!u.ok || uj.id == null) { console.error("[카카오 정보]", u.status, JSON.stringify(uj)); throw new HttpError(400, "profile"); }
       const nickname = (uj.kakao_account && uj.kakao_account.profile && uj.kakao_account.profile.nickname) || (uj.properties && uj.properties.nickname) || "카카오 회원";
-      return { id: "kakao:" + uj.id, provider: "kakao", nickname };
+      return { id: "kakao:" + uj.id, provider: "kakao", nickname, tokens: tj };
     }
   },
   naver: {
     ready: env => !!(env.NAVER_CLIENT_ID && env.NAVER_CLIENT_SECRET),
-    authorize: (env, redirectUri, state) => "https://nid.naver.com/oauth2.0/authorize?" + new URLSearchParams({ response_type: "code", client_id: env.NAVER_CLIENT_ID, redirect_uri: redirectUri, state }),
+    authorize: (env, redirectUri, state, opt = {}) => "https://nid.naver.com/oauth2.0/authorize?" + new URLSearchParams({
+      response_type: "code", client_id: env.NAVER_CLIENT_ID, redirect_uri: redirectUri, state,
+      ...(opt.relogin ? { auth_type: "reauthenticate" } : {})
+    }),
     async profile(env, code, redirectUri, state) {
       const body = new URLSearchParams({ grant_type: "authorization_code", client_id: env.NAVER_CLIENT_ID, client_secret: env.NAVER_CLIENT_SECRET, code, state });
       const t = await fetch("https://nid.naver.com/oauth2.0/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" }, body });
@@ -227,11 +237,13 @@ function backToLogin(env, params, hash) {
 async function authStart(provider, url, env) {
   const P = PROVIDERS[provider];
   if (!P.ready(env)) return redirect(backToLogin(env, {}, "error=not_configured"));
-  const next = NEXT_PAGES.includes(url.searchParams.get("next")) ? url.searchParams.get("next") : "mypage";
+  const notify = provider === "kakao" && url.searchParams.get("notify") === "1";
+  const relogin = url.searchParams.get("relogin") === "1";
+  const next = notify ? "admin" : NEXT_PAGES.includes(url.searchParams.get("next")) ? url.searchParams.get("next") : "mypage";
   const nonce = randomHex(16);
-  const state = await signToken({ k: "state", p: provider, n: nonce, x: next, exp: now() + 600 }, env.SESSION_SECRET);
+  const state = await signToken({ k: "state", p: provider, n: nonce, x: next, nf: notify ? 1 : 0, exp: now() + 600 }, env.SESSION_SECRET);
   const redirectUri = `${url.origin}/auth/${provider}/callback`;
-  return redirect(P.authorize(env, redirectUri, state), {
+  return redirect(P.authorize(env, redirectUri, state, { relogin, notify }), {
     "Set-Cookie": `hd_state=${nonce}; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=600`
   });
 }
@@ -260,8 +272,16 @@ async function authCallback(provider, url, req, env) {
     "ON CONFLICT(id) DO UPDATE SET nickname = excluded.nickname, last_login = excluded.last_login"
   ).bind(who.id, who.provider, who.nickname, ts, ts).run();
 
+  /* 사장님 카톡 알림 연결 */
+  let extra = "";
+  if (state.nf && who.tokens) {
+    const scopes = String(who.tokens.scope || "").split(/\s+/);
+    if (!isAdmin(env, who.id)) extra = "&kakao=not_admin";
+    else if (!scopes.includes("talk_message")) extra = "&kakao=denied";
+    else { await saveKakaoNotify(env, who, who.tokens); extra = "&kakao=linked"; }
+  }
   const token = await signToken({ k: "session", sub: who.id, nk: who.nickname, prv: who.provider, adm: isAdmin(env, who.id), iat: now(), exp: now() + SESSION_DAYS * 86400 }, env.SESSION_SECRET);
-  return redirect(backToLogin(env, { next: state.x }, "token=" + token), clear);
+  return redirect(backToLogin(env, { next: state.x }, "token=" + token + extra), clear);
 }
 
 /* ---------- 회원 ---------- */
@@ -563,8 +583,117 @@ async function recordNotify(env, id, label, result) {
 async function notifyOwnerNew(env, id) {
   const r = await env.DB.prepare("SELECT * FROM inquiries WHERE id = ?").bind(id).first();
   if (!r) return;
-  const res = await sendAlimtalk(env, ownerPhones(env), env.ALIM_TPL_NEW, inqVars(r, ["#{종류}", "#{메뉴}", "#{고객명}", "#{연락처}", "#{일시}", "#{인원}", "#{요청}"]));
+  const tries = [];
+  if (alimReady(env)) tries.push(["알림톡", await sendAlimtalk(env, ownerPhones(env), env.ALIM_TPL_NEW, inqVars(r, ["#{종류}", "#{메뉴}", "#{고객명}", "#{연락처}", "#{일시}", "#{인원}", "#{요청}"]))]);
+  tries.push(["카톡", await sendKakaoMemo(env, ownerMemoText(r))]);
+  const ok = tries.filter(([, x]) => x.sent).map(([v]) => v);
+  const res = ok.length ? { sent: true, via: ok.join("·") }
+    : { sent: false, reason: tries.map(([v, x]) => x.reason || v + " 실패").join(", ") };
   await recordNotify(env, id, "사장님 알림", res);
+}
+function ownerMemoText(r) {
+  const when = [r.want_date ? r.want_date.slice(5).replace("-", "/") : "", r.want_time || ""].filter(Boolean).join(" ");
+  const lines = [
+    `[혜화담] 새 ${r.kind === "reserve" ? "예약" : "문의"}${r.slot_id ? " (떡체험 회차)" : ""}`,
+    `메뉴: ${r.item_name || "-"}`,
+    when || r.people ? `일시: ${when || "-"}${r.people ? " · " + r.people + (r.slot_id ? "명" : "") : ""}` : "",
+    `고객: ${r.name} ${r.phone}`,
+    r.message ? `요청: ${String(r.message).replace(/\s+/g, " ")}` : ""
+  ].filter(Boolean);
+  const text = lines.join("\n");
+  return text.length > 200 ? text.slice(0, 198) + "…" : text; /* 카카오 텍스트 메시지는 200자까지 */
+}
+
+/* ---------- 사장님 카톡 '나에게 보내기' ---------- */
+let knReady = false;
+async function ensureKakaoNotify(env) {
+  if (knReady) return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS kakao_notify (member_id TEXT PRIMARY KEY, nickname TEXT, data TEXT NOT NULL, refresh_exp INTEGER, broken TEXT, updated_at TEXT NOT NULL)").run();
+  knReady = true;
+}
+/* 카카오 토큰은 서버 비밀값(SESSION_SECRET)으로 암호화해서 저장 */
+async function aesKey(env) {
+  const h = await crypto.subtle.digest("SHA-256", enc.encode("kakao-notify:" + env.SESSION_SECRET));
+  return crypto.subtle.importKey("raw", h, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function seal(env, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(env), enc.encode(JSON.stringify(obj))));
+  return b64url(iv) + "." + b64url(ct);
+}
+async function unseal(env, s) {
+  const [a, b] = String(s).split(".");
+  return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64url(a) }, await aesKey(env), fromB64url(b))));
+}
+async function saveKakaoNotify(env, who, tk) {
+  await ensureKakaoNotify(env);
+  const n = now();
+  const d = { at: tk.access_token, atExp: n + (tk.expires_in || 21599) - 60, rt: tk.refresh_token, rtExp: n + (tk.refresh_token_expires_in || 5183999) - 60 };
+  await env.DB.prepare(
+    "INSERT INTO kakao_notify (member_id, nickname, data, refresh_exp, broken, updated_at) VALUES (?, ?, ?, ?, NULL, ?) " +
+    "ON CONFLICT(member_id) DO UPDATE SET nickname = excluded.nickname, data = excluded.data, refresh_exp = excluded.refresh_exp, broken = NULL, updated_at = excluded.updated_at"
+  ).bind(who.id, who.nickname, await seal(env, d), d.rtExp, new Date().toISOString()).run();
+}
+async function kakaoAccess(env, row, force) {
+  const d = await unseal(env, row.data);
+  if (!force && d.atExp > now()) return d.at;
+  if (!d.rt || d.rtExp <= now()) throw new Error("연결 기간이 끝났어요");
+  const body = new URLSearchParams({ grant_type: "refresh_token", client_id: env.KAKAO_REST_KEY, refresh_token: d.rt });
+  if (env.KAKAO_CLIENT_SECRET) body.set("client_secret", env.KAKAO_CLIENT_SECRET);
+  const r = await fetch("https://kauth.kakao.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" }, body });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) { console.error("[카톡 알림 토큰 갱신]", r.status, JSON.stringify(j)); throw new Error("다시 연결이 필요해요"); }
+  d.at = j.access_token; d.atExp = now() + (j.expires_in || 21599) - 60;
+  if (j.refresh_token) { d.rt = j.refresh_token; d.rtExp = now() + (j.refresh_token_expires_in || 5183999) - 60; } /* 만료 한 달 전부터는 새 갱신 토큰이 옴 → 자동 연장 */
+  await env.DB.prepare("UPDATE kakao_notify SET data = ?, refresh_exp = ?, broken = NULL, updated_at = ? WHERE member_id = ?").bind(await seal(env, d), d.rtExp, new Date().toISOString(), row.member_id).run();
+  return d.at;
+}
+async function memoOnce(env, token, text) {
+  const template = { object_type: "text", text, link: { web_url: siteUrl(env) + "admin.html", mobile_web_url: siteUrl(env) + "admin.html" }, button_title: "관리자 페이지" };
+  const r = await fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" },
+    body: new URLSearchParams({ template_object: JSON.stringify(template) })
+  });
+  const j = await r.json().catch(() => ({}));
+  return { ok: r.ok && j.result_code === 0, status: r.status, j };
+}
+async function sendKakaoMemo(env, text, onlyId) {
+  if (!env.KAKAO_REST_KEY) return { sent: false, reason: "카톡 알림 연결 전" };
+  await ensureKakaoNotify(env);
+  const rows = ((await env.DB.prepare("SELECT * FROM kakao_notify WHERE broken IS NULL").all()).results || [])
+    .filter(r => isAdmin(env, r.member_id) && (!onlyId || r.member_id === onlyId));
+  if (!rows.length) return { sent: false, reason: onlyId ? "이 계정은 카톡 알림이 연결되어 있지 않아요" : "카톡 알림 연결 전" };
+  let sent = 0; const fails = [];
+  for (const row of rows) {
+    try {
+      let res = await memoOnce(env, await kakaoAccess(env, row), text);
+      if (res.status === 401) res = await memoOnce(env, await kakaoAccess(env, row, true), text);
+      if (res.ok) { sent++; continue; }
+      console.error("[카톡 알림]", res.status, JSON.stringify(res.j));
+      const why = res.j && res.j.code === -402 ? "카톡 메시지 권한이 없어요" : res.status === 401 ? "다시 연결이 필요해요" : "보내기 실패";
+      if (res.status === 401 || (res.j && (res.j.code === -401 || res.j.code === -402))) await markKakaoBroken(env, row.member_id, why);
+      fails.push(why);
+    } catch (err) {
+      await markKakaoBroken(env, row.member_id, err.message);
+      fails.push(err.message);
+    }
+  }
+  return sent ? { sent: true } : { sent: false, reason: "카톡 " + (fails[0] || "보내기 실패") };
+}
+async function markKakaoBroken(env, id, why) {
+  await env.DB.prepare("UPDATE kakao_notify SET broken = ?, updated_at = ? WHERE member_id = ?").bind(String(why).slice(0, 100), new Date().toISOString(), id).run();
+}
+async function kakaoNotifyStatus(user, env) {
+  await ensureKakaoNotify(env);
+  const rows = ((await env.DB.prepare("SELECT member_id, nickname, refresh_exp, broken, updated_at FROM kakao_notify").all()).results || []).filter(r => isAdmin(env, r.member_id));
+  const out = r => ({ memberId: r.member_id, nickname: r.nickname, until: r.refresh_exp ? new Date(r.refresh_exp * 1000).toISOString() : null, broken: r.broken || null, updatedAt: r.updated_at });
+  const mine = rows.find(r => r.member_id === user.sub);
+  return { canLink: user.sub.startsWith("kakao:") && !!env.KAKAO_REST_KEY, mine: mine ? out(mine) : null, all: rows.map(out) };
+}
+async function kakaoNotifyUnlink(user, env) {
+  await ensureKakaoNotify(env);
+  await env.DB.prepare("DELETE FROM kakao_notify WHERE member_id = ?").bind(user.sub).run();
+  return { ok: true };
 }
 async function notifyCustomer(env, r, status) {
   const tpl = status === "done" ? env.ALIM_TPL_CONFIRM : env.ALIM_TPL_CANCEL;

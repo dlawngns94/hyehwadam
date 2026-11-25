@@ -14,6 +14,11 @@
     clear() { memToken = null; try { localStorage.removeItem(TOKEN_KEY); } catch { /* 무시 */ } }
   };
   const PROVIDER = { kakao: "카카오", naver: "네이버" };
+  /* 로그아웃하면 다음 로그인 때 카카오·네이버 로그인 화면을 다시 띄워 다른 계정을 고를 수 있게 함 */
+  const relogin = {
+    get() { try { return localStorage.getItem("hd_relogin") === "1"; } catch { return false; } },
+    set(on) { try { on ? localStorage.setItem("hd_relogin", "1") : localStorage.removeItem("hd_relogin"); } catch { /* 무시 */ } }
+  };
   const NEXT = { mypage: "mypage.html", admin: "admin.html" };
   const fmtDate = s => { const d = new Date(s); return isNaN(d) ? "-" : d.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" }); };
   const fmtTime = s => { const d = new Date(s); return isNaN(d) ? "-" : d.toLocaleString("ko-KR", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
@@ -42,13 +47,14 @@
     render(ctx) {
       const next = NEXT[new URLSearchParams(location.search).get("next")] ? new URLSearchParams(location.search).get("next") : "mypage";
       const btn = p => ctx.API
-        ? `<a class="sns ${p}" href="${ctx.esc(ctx.API)}/auth/${p}/start?next=${next}">${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></a>`
+        ? `<a class="sns ${p}" data-p="${p}" href="${ctx.esc(ctx.API)}/auth/${p}/start?next=${next}${relogin.get() ? "&relogin=1" : ""}">${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></a>`
         : `<button type="button" class="sns ${p}" data-soon>${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></button>`;
       return ctx.subTop("로그인", [{ name: "로그인" }]) + `<div class="wrap"><div class="auth-box">
         <h2>혜화담 회원 로그인</h2>
         <p class="auth-sub">${ctx.lines(["카카오 또는 네이버 계정으로", "간편하게 로그인하세요."])}</p>
         <div id="auth-msg"></div>
         <div class="sns-list">${btn("kakao")}${btn("naver")}</div>
+        ${ctx.API ? `<p class="switch-acc"><button type="button" class="link-btn" id="switch-acc"${relogin.get() ? " hidden" : ""}>다른 계정으로 로그인하기</button><span id="switch-on"${relogin.get() ? "" : " hidden"}>카카오·네이버 로그인 화면에서 계정을 다시 고를 수 있어요.</span></p>` : ""}
         <p class="fine">${ctx.lines(["혜화담은 회원 확인을 위해 닉네임과 회원번호만 저장합니다.", "로그인하면 개인정보처리방침에 동의하는 것으로 봅니다."])}<a href="privacy.html">개인정보처리방침 보기</a></p>
       </div></div>`;
     },
@@ -61,8 +67,18 @@
       if (hash.get("token")) {
         const t = hash.get("token");
         history.replaceState(null, "", location.pathname);
-        if (/^[\w-]+\.[\w-]+\.[\w-]+$/.test(t)) { token.set(t); location.replace(NEXT[next] || "mypage.html"); return; }
+        if (/^[\w-]+\.[\w-]+\.[\w-]+$/.test(t)) {
+          token.set(t); relogin.set(false);
+          const k = hash.get("kakao");
+          location.replace(k ? "admin.html?kakao=" + encodeURIComponent(k) : NEXT[next] || "mypage.html");
+          return;
+        }
       }
+      const sw = ctx.$("#switch-acc");
+      if (sw) sw.addEventListener("click", () => {
+        relogin.set(true); sw.hidden = true; ctx.$("#switch-on").hidden = false;
+        ctx.$$(".sns[data-p]").forEach(a => { if (!a.href.includes("relogin=1")) a.href += "&relogin=1"; });
+      });
       const errs = {
         denied: "로그인을 취소했어요.",
         state: "로그인 시간이 지났어요. 다시 시도해 주세요.",
@@ -116,7 +132,7 @@
         try { await navigator.clipboard.writeText(me.id); e.target.textContent = "복사됨"; }
         catch { const r = document.createRange(); r.selectNodeContents(ctx.$(".mid")); getSelection().removeAllRanges(); getSelection().addRange(r); e.target.textContent = "선택됨"; }
       });
-      ctx.$("#logout").addEventListener("click", () => { token.clear(); location.href = "index.html"; });
+      ctx.$("#logout").addEventListener("click", () => { token.clear(); relogin.set(true); location.href = "index.html"; });
       api(ctx, "/api/me/inquiries").then(r => {
         if (!r.inquiries.length) return;
         const el = ctx.$("#my-inq"); el.hidden = false;
@@ -127,7 +143,7 @@
       ctx.$("#withdraw-no").addEventListener("click", () => { wb.hidden = true; });
       ctx.$("#withdraw-yes").addEventListener("click", async e => {
         e.target.disabled = true;
-        try { await api(ctx, "/api/me", { method: "DELETE" }); token.clear(); box.innerHTML = `<div class="notice">탈퇴가 완료됐어요. 그동안 고맙습니다.</div><p style="text-align:center"><a class="btn" href="index.html">홈으로</a></p>`; }
+        try { await api(ctx, "/api/me", { method: "DELETE" }); token.clear(); relogin.set(true); box.innerHTML = `<div class="notice">탈퇴가 완료됐어요. 그동안 고맙습니다.</div><p style="text-align:center"><a class="btn" href="index.html">홈으로</a></p>`; }
         catch (err) { e.target.disabled = false; wb.insertAdjacentHTML("beforeend", `<p class="err">${ctx.esc(err.message)}</p>`); }
       });
     }
@@ -158,8 +174,45 @@
   const stLabel = x => (x.kind === "reserve" ? STATUS_R : STATUS)[x.status] || x.status;
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
   const dayLabel = d => { const x = new Date(d + "T00:00:00Z"); return `${x.getUTCMonth() + 1}월 ${x.getUTCDate()}일 (${WEEK[x.getUTCDay()]})`; };
+  /* ---------- 관리자: 사장님 카톡 '나에게 보내기' ---------- */
+  async function kakaoBox(ctx, me, el) {
+    const esc = ctx.esc;
+    const flash = new URLSearchParams(location.search).get("kakao");
+    if (flash) history.replaceState(null, "", location.pathname);
+    const FLASH = { linked: ["ok", "카톡 알림이 연결됐어요. 시험 보내기로 확인해 보세요."], denied: ["no", "카카오톡 메시지 권한에 동의하지 않아 연결되지 않았어요."], not_admin: ["no", "관리자 계정만 연결할 수 있어요."] };
+    let msg = flash && FLASH[flash] ? FLASH[flash] : null;
+    const linkHref = `${esc(ctx.API)}/auth/kakao/start?notify=1`;
+    async function render() {
+      let s;
+      try { s = await api(ctx, "/api/admin/kakao-notify"); }
+      catch (err) { el.innerHTML = `<div class="kn"><p class="err">${esc(err.message)}</p></div>`; return; }
+      const m = s.mine, until = m && m.until ? new Date(m.until).toLocaleDateString("ko-KR", { month: "long", day: "numeric" }) : "";
+      const others = s.all.filter(x => x.memberId !== me.id && !x.broken).map(x => esc(x.nickname)).join(", ");
+      let body;
+      if (!s.canLink) body = `<p>사장님 카톡으로 새 예약 알림을 받으려면 <b>카카오 계정</b>으로 로그인한 관리자가 연결해야 해요.</p>`;
+      else if (!m) body = `<p><b>사장님 카톡으로 새 예약 알림 받기</b> <span class="free">무료</span><br><span class="hint">새 예약·문의가 들어오면 카카오톡 '나와의 채팅'으로 바로 알려 드려요.</span></p><a class="btn primary sm" href="${linkHref}">카톡 알림 연결</a>`;
+      else if (m.broken) body = `<p><b>카톡 알림 연결이 끊겼어요</b> <span class="hint">(${esc(m.broken)})</span><br><span class="hint">아래 버튼을 눌러 다시 동의하면 이어서 받을 수 있어요.</span></p><a class="btn primary sm" href="${linkHref}">다시 연결</a><button type="button" class="link-btn" data-kn="unlink">연결 해제</button>`;
+      else body = `<p><b>카톡 알림 연결됨</b> · 새 예약이 오면 '나와의 채팅'으로 보내요.<br><span class="hint">연결 유지: ${until}까지 (알림을 보낼 때마다 자동으로 연장돼요)</span></p><button type="button" class="btn sm" data-kn="test">시험 보내기</button><button type="button" class="link-btn" data-kn="unlink">연결 해제</button>`;
+      el.innerHTML = `<div class="kn${m && !m.broken ? " on" : ""}">${body}${others ? `<p class="hint">함께 받는 관리자: ${others}</p>` : ""}${msg ? `<p class="kn-msg ${msg[0]}">${esc(msg[1])}</p>` : ""}</div>`;
+    }
+    el.addEventListener("click", async e => {
+      const b = e.target.closest("[data-kn]"); if (!b) return;
+      if (b.dataset.kn === "unlink" && !b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "한 번 더 누르면 해제"; return; }
+      b.disabled = true;
+      try {
+        if (b.dataset.kn === "test") { const r = await api(ctx, "/api/admin/kakao-notify/test", { method: "POST" }); msg = r.sent ? ["ok", "보냈어요. 카카오톡 '나와의 채팅'을 확인해 보세요."] : ["no", "보내지 못했어요: " + (r.reason || "")]; }
+        else { await api(ctx, "/api/admin/kakao-notify", { method: "DELETE" }); msg = ["ok", "카톡 알림 연결을 해제했어요."]; }
+      } catch (err) { msg = ["no", err.message]; }
+      render();
+    });
+    render();
+  }
+
   async function loadInquiries(ctx, me) {
-    const esc = ctx.esc, panel = ctx.$('[data-panel="inq"]');
+    const esc = ctx.esc, root = ctx.$('[data-panel="inq"]');
+    root.innerHTML = `<div id="kn-box"></div><div id="inq-body"></div>`;
+    kakaoBox(ctx, me, ctx.$("#kn-box", root));
+    const panel = ctx.$("#inq-body", root);
     let list = [], filter = "new", alim = null;
     const badge = () => { const n = list.filter(x => x.status === "new").length, b = ctx.$("#inq-badge"); b.textContent = n; b.hidden = !n; };
     const telHref = t => "tel:" + String(t || "").replace(/[^0-9+]/g, "");
@@ -169,7 +222,7 @@
       const miss = [!alim.owner && "사장님 번호(OWNER_PHONE)", !alim.templates.new && "새 예약 템플릿", !alim.templates.confirm && "확정 템플릿", !alim.templates.cancel && "취소 템플릿"].filter(Boolean);
       return `<div class="alim-bar on">카카오 알림톡 연결됨${miss.length ? ` · 아직 설정 안 된 것: ${miss.join(", ")}` : " · 새 예약은 사장님께, 확정·취소는 손님께 자동 발송돼요."}</div>`;
     };
-    const ntfLine = n => !n ? "" : `<p class="ntf ${n.sent ? "ok" : "no"}">알림톡 · ${esc(n.label || "")} ${n.sent ? "보냄" : "못 보냄 (" + esc(n.reason || "") + ")"}${n.at ? " · " + fmtTime(n.at) : ""}</p>`;
+    const ntfLine = n => !n ? "" : `<p class="ntf ${n.sent ? "ok" : "no"}">알림 · ${esc(n.label || "")} ${n.sent ? "보냄" + (n.via ? " (" + esc(n.via) + ")" : "") : "못 보냄 (" + esc(n.reason || "") + ")"}${n.at ? " · " + fmtTime(n.at) : ""}</p>`;
     function render() {
       const c = { all: list.length, new: 0, done: 0, canceled: 0 };
       list.forEach(x => { c[x.status] = (c[x.status] || 0) + 1; });

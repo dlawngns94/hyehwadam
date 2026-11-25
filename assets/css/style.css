@@ -593,3 +593,15 @@ code,.mid{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:
 .slot-add .acts{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .cd.blank{padding:0}
 @media (max-width:760px){.cd{height:42px}}
+
+/* 다른 계정으로 로그인 · 사장님 카톡 알림 */
+.switch-acc{margin:12px 0 0;font-size:13px;color:var(--sub)}
+.switch-acc .link-btn{font-size:13px}
+.kn{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:#fffdf3;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.kn.on{background:var(--brand-soft);border-color:#cfe1d5}
+.kn > p{margin:0;flex:1 1 320px;font-size:14px;color:var(--ink);line-height:1.6}
+.kn .free{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:var(--accent);border-radius:999px;padding:1px 8px;margin-left:4px;vertical-align:1px}
+.kn .hint{font-size:12.5px}
+.kn .kn-msg{flex-basis:100%;font-size:13px;font-weight:700}
+.kn .kn-msg.ok{color:var(--brand)}
+.kn .kn-msg.no{color:#b4432f}
