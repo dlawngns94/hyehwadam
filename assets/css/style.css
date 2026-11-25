@@ -199,7 +199,8 @@ header.site{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.97);ba
 .points{list-style:none;margin:20px 0;padding:0;display:grid;gap:10px}
 .points li{display:flex;gap:10px;align-items:center;font-size:15px}
 .points li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--brand);flex-shrink:0}
-.detail .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.detail .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:24px;max-width:460px}
+.detail .actions .btn{padding-inline:12px;white-space:nowrap}
 .note{font-size:13px;color:var(--mute);margin-top:14px}
 
 /* ---------- 매장 · 소개 · 체험 ---------- */

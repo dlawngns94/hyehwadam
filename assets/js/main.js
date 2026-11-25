@@ -247,7 +247,7 @@
       apiBase() && !m.link ? `<a class="btn primary" href="#inquiry">${UI.note} ${inqKind(m) === "reserve" ? "예약 · 문의 남기기" : "문의 남기기"}</a>` : "",
       `<a class="btn${m.link || apiBase() ? "" : " primary"}" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 문의</a>`,
       `<a class="btn" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">${UI.insta} 인스타그램 DM</a>`,
-      m.cat === "tteok" ? `<a class="btn" href="${esc(SITE.links.smartstore)}" target="_blank" rel="noopener">스마트스토어</a>` : ""
+      `<a class="btn" href="${esc(SITE.links.smartstore)}" target="_blank" rel="noopener">스마트스토어</a>`
     ].join("");
     const related = MENU.filter(x => x.cat === m.cat && x.id !== m.id).slice(0, 4);
     return subTop(c.name, [{ name: "메뉴", href: "menu.html" }, { name: c.name, href: `menu.html?cat=${m.cat}` }, { name: m.name }]) + `<div class="wrap">
