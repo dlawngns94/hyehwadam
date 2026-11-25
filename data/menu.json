@@ -9,7 +9,7 @@
   {"id":"b03","cat":"bingsu","name":"복숭아빙수","price":19000,"flag":"대표","icon":"bingsu","tile":"#fbe2d5","image":"assets/images/peach-bingsu.jpg"},
   {"id":"b04","cat":"bingsu","name":"수박빙수","price":19000,"flag":"대표","icon":"bingsu","tile":"#f8dcdc","image":"assets/images/watermelon-bingsu.jpg"},
   {"id":"b05","cat":"bingsu","name":"무화과빙수","price":19000,"flag":"대표","icon":"bingsu","tile":"#f1e0e4","image":"assets/images/fig-bingsu.jpg"},
-  {"id":"b06","cat":"bingsu","name":"생딸기빙수","price":19001,"icon":"bingsu","tile":"#f9dede","image":"assets/images/strawberry-bingsu.jpg"},
+  {"id":"b06","cat":"bingsu","name":"생딸기빙수","price":19000,"icon":"bingsu","tile":"#f9dede","image":"assets/images/strawberry-bingsu.jpg"},
   {"id":"b07","cat":"bingsu","name":"황금메론빙수","price":19000,"icon":"bingsu","tile":"#fbe6c8","image":"assets/images/golden-melon-bingsu.jpg"},
   {"id":"b08","cat":"bingsu","name":"용과빙수","price":19000,"icon":"bingsu","tile":"#f5dcea","image":"assets/images/dragonfruit-bingsu.jpg"},
   {"id":"b09","cat":"bingsu","name":"인절미빙수","price":15000,"icon":"bingsu","tile":"#f1e7d3","image":"assets/images/injeolmi-bingsu.jpg"},
