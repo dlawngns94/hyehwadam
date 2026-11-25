@@ -364,7 +364,7 @@
       const first = new Date(Date.UTC(y, mo - 1, 1)), days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
       const minM = ym(S.today), maxM = ym(S.slots[S.slots.length - 1].date);
       let cells = "";
-      for (let i = 0; i < first.getUTCDay(); i++) cells += `<span class="cd empty"></span>`;
+      for (let i = 0; i < first.getUTCDay(); i++) cells += `<span class="cd blank" aria-hidden="true"></span>`;
       for (let d = 1; d <= days; d++) {
         const ds = `${S.month}-${String(d).padStart(2, "0")}`, list = g[ds] || [];
         const left = list.filter(open).reduce((a, s) => a + s.remaining, 0);
