@@ -1,5 +1,9 @@
 User-agent: *
 Allow: /
+Disallow: /hyehwadam/admin.html
+Disallow: /hyehwadam/mypage.html
+Disallow: /admin.html
+Disallow: /mypage.html
 
 # 도메인이 정해지면 아래 주소를 바꾸고 맨 앞 # 을 지우세요
 # Sitemap: https://www.도메인/sitemap.xml

@@ -12,6 +12,10 @@ menu-item.html    메뉴 상세 (menu-item.html?id=t01 처럼 id 로 구분)
 about.html        혜화담 이야기
 class.html        떡체험 안내
 store.html        매장 안내 (주소 · 지도 · 영업시간 · 전화)
+login.html        카카오 · 네이버 로그인
+mypage.html       내 정보 (로그아웃 · 회원 탈퇴)
+admin.html        관리자 (메뉴 · 사진 · 설명 수정, 회원 목록)
+privacy.html      개인정보처리방침
 404.html          없는 주소 접속 시 표시
 data/
   site.json       상호, 주소, 전화, 영업시간, 링크(인스타·스마트스토어·지도), 메뉴 분류
@@ -20,6 +24,10 @@ data/
 assets/
   css/style.css   디자인 (맨 위 :root 에서 색상·폰트 변경)
   js/main.js      화면 구성 로직 (보통 수정할 필요 없음)
+  js/member.js    로그인 · 내 정보 · 관리자 화면
+worker/
+  index.js        로그인·관리자 서버 (Cloudflare Worker 에 붙여 넣는 파일)
+로그인_관리자_설정안내.md   로그인·관리자 기능 켜는 방법
   images/         사진 파일 (favicon.svg = 브라우저 탭 아이콘)
 기획서_강화프롬프트.md   이 홈페이지의 기획서
 ```
@@ -86,3 +94,12 @@ GitHub 웹에서 `data/menu.json` 을 열고 ✏️(연필) → 수정 → **Com
 `assets/css/style.css` 맨 위 `:root` 에서 바꿉니다.
 - `--brand` 혜화담 초록 · `--brand-deep` 진한 초록(제목·띠) · `--cream` 크림 배경 · `--accent` 노랑
 - 제목 폰트 `Gowun Batang`(명조), 본문 `Noto Sans KR`
+
+## 6. 로그인 · 관리자 기능
+
+카카오·네이버 로그인, 회원 목록, **관리자 화면에서 메뉴·사진·설명 직접 수정** 기능이 들어 있습니다.
+켜는 방법은 **[로그인_관리자_설정안내.md](로그인_관리자_설정안내.md)** 를 따라 하세요.
+
+- 설정 전에는 `login.html` 에 '준비 중' 안내만 보이고 상단 로그인 아이콘은 숨겨져 있습니다.
+- 관리자 화면에서 저장하면 서버가 이 저장소의 `data/menu.json` 과 `assets/images/uploads/` 에 저장합니다. 1~2분 뒤 반영됩니다.
+- 비밀 열쇠(토큰·Secret)는 Cloudflare 설정에만 넣고, 이 저장소에는 절대 넣지 마세요.

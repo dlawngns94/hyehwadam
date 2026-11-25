@@ -31,6 +31,15 @@
     "businessNumber": "(입력 필요)"
   },
 
+  "auth": {
+    "api": ""
+  },
+
+  "privacy": {
+    "officer": "조은혜",
+    "effective": "2026년 11월 25일"
+  },
+
   "categories": [
     { "id": "all", "name": "전체" },
     { "id": "tteok", "name": "떡", "en": "RICE CAKE", "sub": "강화섬쌀로 매일 빚는 효소떡 · 첨가물·방부제 없이" },

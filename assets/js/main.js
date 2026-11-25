@@ -56,8 +56,12 @@
     home: `<svg viewBox="0 0 24 24" ${S}><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>`,
     search: `<svg viewBox="0 0 24 24" ${S}><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></svg>`,
     up: `<svg viewBox="0 0 24 24" ${S}><path d="M6 14l6-6 6 6"/></svg>`,
-    store: `<svg viewBox="0 0 24 24" ${S}><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M10 20v-5h4v5"/></svg>`
+    store: `<svg viewBox="0 0 24 24" ${S}><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M10 20v-5h4v5"/></svg>`,
+    user: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>`
   };
+  /* 회원 기능 — data/site.json 의 auth.api 에 서버 주소가 있을 때만 켜짐 */
+  const apiBase = () => String((SITE.auth && SITE.auth.api) || "").replace(/\/+$/, "");
+  const loggedIn = () => { try { return !!localStorage.getItem("hd_token"); } catch { return false; } };
   const art = (m, cls = "") => m.image
     ? `<img src="${esc(m.image)}" alt="${esc(m.name)}" loading="lazy">`
     : (ICON[m.icon] || ICON.tteok).replace("<svg", `<svg class="${cls}" style="color:var(--brand-deep)" aria-hidden="true"`);
@@ -88,6 +92,7 @@
         <div class="h-util">
           <a class="icon-btn ext" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener" aria-label="인스타그램">${UI.insta}</a>
           <a class="icon-btn ext" href="store.html" aria-label="매장 안내">${UI.pin}</a>
+          ${apiBase() ? `<a class="icon-btn" href="${loggedIn() ? "mypage.html" : "login.html"}" aria-label="${loggedIn() ? "내 정보" : "로그인"}">${UI.user}</a>` : ""}
           <button class="icon-btn menu-toggle" type="button" aria-label="메뉴 열기" aria-expanded="false">${UI.menu}</button>
         </div>
       </div></header>
@@ -99,6 +104,7 @@
         <a class="d-link" href="store.html">매장 안내</a>
         <a class="d-link" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">인스타그램</a>
         <a class="d-link" href="${esc(SITE.links.smartstore)}" target="_blank" rel="noopener">스마트스토어</a>
+        ${apiBase() ? `<a class="d-link" href="${loggedIn() ? "mypage.html" : "login.html"}">${loggedIn() ? "내 정보" : "로그인"}</a>` : ""}
       </nav></div>`;
   }
   function footer() {
@@ -117,6 +123,7 @@
         <p>${esc(st.address)} · <a href="${telHref(st.tel)}">${esc(st.tel)}</a></p>
         <p>${st.hours.map(h => `${esc(h.day)} ${esc(h.time)}`).join(" · ")} · ${esc(st.hoursNote)}</p>
       </div>
+      <p class="f-legal"><a href="privacy.html"><b>개인정보처리방침</b></a></p>
       <p class="copy">© ${new Date().getFullYear()} ${esc(SITE.name)}. All rights reserved.</p>
     </div></footer>
     <button class="to-top" type="button" aria-label="맨 위로">${UI.up}</button>`;
@@ -314,6 +321,36 @@
     </article></div>`;
   }
 
+  /* ---------- 페이지: 개인정보처리방침 ---------- */
+  function pagePrivacy() {
+    const co = SITE.company, st = SITE.store, p = SITE.privacy || {};
+    return subTop("개인정보처리방침", [{ name: "개인정보처리방침" }]) + `<div class="wrap"><article class="prose legal">
+      <p>${esc(co.corpName)}(이하 '혜화담')은 「개인정보 보호법」에 따라 회원의 개인정보를 보호하고, 관련 고충을 신속하게 처리하기 위해 다음과 같이 개인정보처리방침을 둡니다.</p>
+      <h2>1. 수집하는 개인정보와 수집 방법</h2>
+      <ul><li>카카오 또는 네이버 로그인 시: 회원번호(카카오·네이버가 발급한 고유 식별값), 닉네임</li>
+        <li>서비스 이용 과정에서 자동 생성: 가입일시, 최근 로그인 일시</li>
+        <li>혜화담은 이름, 전화번호, 이메일, 비밀번호를 받지 않습니다.</li></ul>
+      <h2>2. 이용 목적</h2>
+      <ul><li>회원 식별과 로그인 유지</li><li>회원 관리(가입·탈퇴 처리)</li></ul>
+      <h2>3. 보유 및 이용 기간</h2>
+      <p>회원 탈퇴 시까지 보관하며, 탈퇴하면 지체 없이 삭제합니다. 탈퇴는 [내 정보] 화면의 '회원 탈퇴'에서 언제든 할 수 있습니다.</p>
+      <h2>4. 제3자 제공</h2>
+      <p>혜화담은 회원의 개인정보를 제3자에게 제공하지 않습니다.</p>
+      <h2>5. 처리 위탁 및 국외 이전</h2>
+      <ul><li>수탁자: Cloudflare, Inc. (미국)</li><li>위탁 업무: 회원 정보 저장 및 로그인 서버 운영</li>
+        <li>이전 항목: 회원번호, 닉네임, 가입·로그인 일시</li><li>이전 시기·방법: 로그인 시 네트워크를 통해 전송</li><li>보유 기간: 회원 탈퇴 시까지</li></ul>
+      <h2>6. 회원의 권리</h2>
+      <p>회원은 언제든지 자신의 개인정보를 조회하거나 삭제(탈퇴)를 요청할 수 있습니다. 카카오·네이버와의 연결 해제는 각 서비스의 계정 설정에서 할 수 있습니다.</p>
+      <h2>7. 안전성 확보 조치</h2>
+      <p>개인정보는 접근이 통제된 서버에 저장하며, 모든 통신은 암호화(https)합니다. 관리자 화면은 지정된 관리자만 이용할 수 있습니다.</p>
+      <h2>8. 개인정보 보호책임자</h2>
+      <ul><li>성명: ${esc(p.officer || co.ceo)} (대표)</li><li>연락처: ${esc(st.tel)}</li></ul>
+      <p>개인정보 침해 신고·상담: 개인정보침해신고센터(국번 없이 118), 개인정보분쟁조정위원회(1833-6972)</p>
+      <h2>9. 시행일</h2>
+      <p>이 방침은 ${esc(p.effective || "2026년 11월 25일")}부터 적용됩니다.</p>
+    </article></div>`;
+  }
+
   /* ---------- 시작 ---------- */
   async function getJSON(path) {
     const res = await fetch(path, { cache: "no-cache" });
@@ -329,13 +366,17 @@
       view.innerHTML = `<p class="empty">페이지를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p>`;
       return;
     }
-    const pages = { home: pageHome, menu: pageMenu, item: pageItem, store: pageStore, about: pageAbout, class: pageClass };
-    view.innerHTML = (pages[PAGE] || pageHome)();
+    const pages = { home: pageHome, menu: pageMenu, item: pageItem, store: pageStore, about: pageAbout, class: pageClass, privacy: pagePrivacy };
+    /* 회원 화면(login · mypage · admin)은 member.js 가 등록 */
+    const ext = (window.HD_PAGES || {})[PAGE];
+    const ctx = { SITE, MENU, API: apiBase(), $, $$, esc, lines, subTop, UI, ICON, priceText, catOf };
+    view.innerHTML = ext ? ext.render(ctx) : (pages[PAGE] || pageHome)();
     view.insertAdjacentHTML("beforebegin", header());
     document.body.insertAdjacentHTML("beforeend", footer());
     bindChrome();
     if (PAGE === "home") bindSlider();
     if (PAGE === "menu") bindMenu();
+    if (ext && ext.bind) ext.bind(ctx);
   }
   boot();
 })();
