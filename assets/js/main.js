@@ -273,12 +273,13 @@
   /* ---------- 공통 블록: 예약 · 문의 폼 (서버가 연결됐을 때만 보임) ---------- */
   const inqKind = m => ["tteok", "order"].includes(m.cat) ? "reserve" : "inquiry";
   const kstToday = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-  function inquiryForm(m, force) {
+  function inquiryForm(m, force, bare) {
     if (!apiBase()) return "";
     const k = force || inqKind(m);
-    return `<section class="inq" id="inquiry">
+    const head = bare ? "" : `<section class="inq" id="inquiry">
       <div class="inq-head"><small>RESERVATION · INQUIRY</small><h2>예약 · 문의하기</h2>
-        <p>${lines(["남겨 주시면 확인 후 연락드려요.", "급한 예약은 전화가 가장 빨라요."])}</p></div>
+        <p>${lines(["남겨 주시면 확인 후 연락드려요.", "급한 예약은 전화가 가장 빨라요."])}</p></div>`;
+    return head + `
       <form class="inq-form" novalidate data-item="${esc(m.id)}" data-name="${esc(m.name)}">
         <div class="seg" role="radiogroup" aria-label="종류">
           <label><input type="radio" name="kind" value="reserve"${k === "reserve" ? " checked" : ""}><span>예약 · 주문</span></label>
@@ -307,8 +308,163 @@
         </div>
         <p class="inq-err" role="alert" hidden></p>
         <button class="btn primary inq-submit" type="submit">보내기</button>
-      </form></section>`;
+      </form>` + (bare ? "" : `</section>`);
   }
+  function bindPhone(input) {
+    input.addEventListener("input", e => {
+      const d = e.target.value.replace(/\D/g, "").slice(0, 11);
+      e.target.value = d.length < 4 ? d : d.length < 8 ? d.replace(/^(\d{3})(\d+)/, "$1-$2")
+        : d.startsWith("02") ? d.replace(/^(02)(\d{3,4})(\d{4})$/, "$1-$2-$3") : d.replace(/^(\d{3})(\d{3,4})(\d{4})$/, "$1-$2-$3");
+    });
+  }
+  const authHeaders = () => { const h = { "Content-Type": "application/json" }; try { const tk = localStorage.getItem("hd_token"); if (tk) h.Authorization = "Bearer " + tk; } catch { /* 무시 */ } return h; };
+  const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+  const dayLabel = d => { const x = new Date(d + "T00:00:00Z"); return `${x.getUTCMonth() + 1}월 ${x.getUTCDate()}일 (${WEEK[x.getUTCDay()]})`; };
+
+  /* ---------- 떡체험 달력 예약 (회차 · 정원 · 남은 자리) ---------- */
+  function bookingBox(m) {
+    if (!apiBase()) return "";
+    return `<section class="inq book" id="inquiry" data-item="${esc(m.id)}" data-name="${esc(m.name)}">
+      <div class="inq-head"><small>RESERVATION</small><h2>떡체험 예약</h2>
+        <p>${lines(["달력에서 날짜와 시간을 골라 주세요.", "회차마다 정원이 있어 남은 자리만큼 예약할 수 있어요."])}</p></div>
+      <div id="book"><p class="loading">예약 가능한 날짜를 불러오는 중…</p></div>
+    </section>`;
+  }
+  function bindBooking() {
+    const box = $("#book"); if (!box) return;
+    const sec = box.closest(".book"), item = { id: sec.dataset.item, name: sec.dataset.name };
+    const S = { slots: [], today: kstToday(), month: null, date: null, slotId: null };
+    const ym = d => d.slice(0, 7);
+    const monthAdd = (m, n) => { const [y, mo] = m.split("-").map(Number); const x = new Date(Date.UTC(y, mo - 1 + n, 1)); return x.toISOString().slice(0, 7); };
+    const byDate = () => { const g = {}; S.slots.forEach(s => { (g[s.date] = g[s.date] || []).push(s); }); return g; };
+    const open = s => !s.closed && s.remaining > 0;
+
+    async function load(keep) {
+      try {
+        const res = await fetch(apiBase() + "/api/slots", { headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "불러오지 못했어요.");
+        S.slots = data.slots; S.today = data.today || S.today;
+      } catch (err) { S.slots = []; S.err = err.message; }
+      if (!S.slots.length) return fallback();
+      if (!keep || !S.month) {
+        const first = S.slots.find(open) || S.slots[0];
+        S.month = ym(first.date);
+      }
+      if (S.slotId && !S.slots.some(s => s.id === S.slotId)) S.slotId = null;
+      render();
+    }
+    function fallback() {
+      box.innerHTML = `<div class="notice">${lines(["지금은 온라인으로 예약할 수 있는 회차가 없어요.", "원하시는 날짜를 남겨 주시면 확인 후 연락드릴게요."])}</div>` + inquiryForm({ ...item, cat: "order" }, "reserve", true);
+      bindInquiry();
+    }
+    function calendar() {
+      const g = byDate();
+      const [y, mo] = S.month.split("-").map(Number);
+      const first = new Date(Date.UTC(y, mo - 1, 1)), days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+      const minM = ym(S.today), maxM = ym(S.slots[S.slots.length - 1].date);
+      let cells = "";
+      for (let i = 0; i < first.getUTCDay(); i++) cells += `<span class="cd empty"></span>`;
+      for (let d = 1; d <= days; d++) {
+        const ds = `${S.month}-${String(d).padStart(2, "0")}`, list = g[ds] || [];
+        const left = list.filter(open).reduce((a, s) => a + s.remaining, 0);
+        const cls = !list.length ? "off" : left ? "has" : "full";
+        cells += list.length
+          ? `<button type="button" class="cd ${cls}${ds === S.date ? " sel" : ""}${ds === S.today ? " today" : ""}" data-date="${ds}" aria-label="${dayLabel(ds)} ${left ? `남은 자리 ${left}` : "마감"}"><b>${d}</b><small>${left ? `${left}석` : "마감"}</small></button>`
+          : `<span class="cd off${ds === S.today ? " today" : ""}"><b>${d}</b></span>`;
+      }
+      return `<div class="cal">
+        <div class="cal-head"><button type="button" class="cal-nav" data-m="-1" aria-label="이전 달"${S.month <= minM ? " disabled" : ""}>‹</button>
+          <b>${y}년 ${mo}월</b><button type="button" class="cal-nav" data-m="1" aria-label="다음 달"${S.month >= maxM ? " disabled" : ""}>›</button></div>
+        <div class="cal-grid">${WEEK.map((w, i) => `<span class="cw${i === 0 ? " sun" : i === 6 ? " sat" : ""}">${w}</span>`).join("")}${cells}</div>
+        <p class="cal-legend"><span class="lg has"></span>예약 가능 <span class="lg full"></span>마감</p>
+      </div>`;
+    }
+    function slotList() {
+      if (!S.date) return `<div class="slot-pick empty">${lines(["달력에서 예약 가능한(초록) 날짜를", "골라 주세요."])}</div>`;
+      const list = byDate()[S.date] || [];
+      return `<div class="slot-pick"><h3>${dayLabel(S.date)}</h3><div class="slots">${list.map(s => {
+        const full = !open(s), pct = Math.round((s.booked / s.capacity) * 100);
+        return `<button type="button" class="slot${s.id === S.slotId ? " sel" : ""}" data-slot="${s.id}"${full ? " disabled" : ""}>
+          <b>${esc(s.time)}</b><span class="slot-t">${esc(s.title)}</span>
+          <span class="slot-n">${full ? (s.closed ? "예약 마감" : "정원 마감") : `남은 자리 <em>${s.remaining}</em> / ${s.capacity}`}</span>
+          <span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span></button>`;
+      }).join("")}</div></div>`;
+    }
+    function bookForm() {
+      const s = S.slots.find(x => x.id === S.slotId);
+      if (!s) return "";
+      return `<form class="inq-form book-form" novalidate>
+        <p class="book-sum"><b>${dayLabel(s.date)} ${esc(s.time)}</b> · ${esc(s.title)} · 남은 자리 ${s.remaining}</p>
+        <div class="fld-row r3">
+          <label class="fld"><span>이름 *</span><input name="name" maxlength="30" autocomplete="name"></label>
+          <label class="fld"><span>연락처 *</span><input name="phone" type="tel" inputmode="tel" maxlength="13" placeholder="010-1234-5678" autocomplete="tel"></label>
+          <label class="fld"><span>인원 * <small>최대 ${s.remaining}명</small></span><input name="people" type="number" min="1" max="${s.remaining}" inputmode="numeric" value="1"></label>
+        </div>
+        <label class="fld"><span>요청 사항</span><textarea name="message" rows="3" maxlength="1000" placeholder="예: 아이 2명, 어른 2명이에요 / 단체명"></textarea></label>
+        <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <div class="agree">
+          <label><input type="checkbox" name="agree"> <span><b>[필수]</b> 개인정보 수집·이용에 동의합니다.</span></label>
+          <details><summary>내용 보기</summary><ul>
+            <li>수집 항목: 이름, 연락처, 예약 날짜·시간, 인원, 요청 내용</li>
+            <li>이용 목적: 예약 확인 및 연락(카카오 알림톡 포함)</li>
+            <li>보유 기간: 처리 완료 후 1년 (이후 자동 삭제)</li>
+            <li>동의하지 않으셔도 되며, 이 경우 전화(${esc(SITE.store.tel)})로 예약하실 수 있어요.</li>
+          </ul></details>
+        </div>
+        <p class="inq-err" role="alert" hidden></p>
+        <button class="btn primary inq-submit" type="submit">예약 신청하기</button>
+      </form>`;
+    }
+    function render() {
+      const keep = box.querySelector(".book-form") && S.slotId ? Object.fromEntries([...new FormData(box.querySelector(".book-form"))]) : null;
+      box.innerHTML = `<div class="book-grid">${calendar()}${slotList()}</div>${bookForm()}`;
+      const form = box.querySelector(".book-form");
+      if (form) {
+        if (keep) for (const [k, v] of Object.entries(keep)) { const el = form.elements[k]; if (el && el.type !== "checkbox" && k !== "people") el.value = v; }
+        bindPhone(form.elements.phone);
+        form.addEventListener("submit", submit);
+      }
+    }
+    box.addEventListener("click", e => {
+      const nav = e.target.closest(".cal-nav"); if (nav) { S.month = monthAdd(S.month, +nav.dataset.m); render(); return; }
+      const day = e.target.closest(".cd[data-date]"); if (day) { S.date = day.dataset.date; S.slotId = null; render(); return; }
+      const sl = e.target.closest(".slot[data-slot]");
+      if (sl && !sl.disabled) { S.slotId = +sl.dataset.slot; render(); const f = box.querySelector(".book-form"); if (f) { f.scrollIntoView({ behavior: "smooth", block: "nearest" }); f.elements.name.focus({ preventScroll: true }); } }
+    });
+    async function submit(e) {
+      e.preventDefault();
+      const form = e.target, f = form.elements, err = form.querySelector(".inq-err"), btn = form.querySelector(".inq-submit");
+      const s = S.slots.find(x => x.id === S.slotId);
+      const show = (msg, field) => { err.textContent = msg; err.hidden = false; if (field && f[field]) f[field].focus(); };
+      err.hidden = true;
+      const body = { slotId: S.slotId, itemId: item.id, itemName: s ? s.title : item.name, name: f.name.value.trim(), phone: f.phone.value.trim(),
+        people: f.people.value === "" ? null : Number(f.people.value), message: f.message.value.trim(), agree: f.agree.checked, website: f.website.value };
+      if (!body.name) return show("이름을 입력해 주세요.", "name");
+      if (!/^0\d{8,10}$/.test(body.phone.replace(/\D/g, ""))) return show("연락처를 정확히 입력해 주세요. 예: 010-1234-5678", "phone");
+      if (!Number.isInteger(body.people) || body.people < 1) return show("인원을 입력해 주세요.", "people");
+      if (s && body.people > s.remaining) return show(`남은 자리가 ${s.remaining}자리예요.`, "people");
+      if (!body.agree) return show("개인정보 수집·이용에 동의해 주세요.", "agree");
+      btn.disabled = true; btn.textContent = "보내는 중…";
+      try {
+        const res = await fetch(apiBase() + "/api/inquiries", { method: "POST", headers: authHeaders(), body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409) { await load(true); const f2 = box.querySelector(".book-form"); const msg = data.message || "자리가 바뀌었어요."; if (f2) { const e2 = f2.querySelector(".inq-err"); e2.textContent = msg; e2.hidden = false; } else box.insertAdjacentHTML("beforeend", `<p class="inq-err">${esc(msg)}</p>`); return; }
+        if (!res.ok) throw new Error(data.message || "보내지 못했어요. 잠시 후 다시 시도해 주세요.");
+        sec.querySelector(".inq-head p").hidden = true;
+        box.innerHTML = `<div class="inq-done" role="status"><b>예약 신청이 접수됐어요.</b>
+          <p>${lines(["사장님이 확인 후 확정 여부를 알려 드릴게요.", "급한 경우 전화 주시면 더 빨라요."])}</p>
+          <dl><div><dt>체험</dt><dd>${esc(body.itemName)}</dd></div><div><dt>일시</dt><dd>${esc(dayLabel(data.date || s.date))} ${esc(data.time || s.time)}</dd></div>
+          <div><dt>인원</dt><dd>${body.people}명</dd></div><div><dt>연락처</dt><dd>${esc(body.phone)}</dd></div></dl>
+          <a class="btn" href="${telHref(SITE.store.tel)}">${UI.phone} ${esc(SITE.store.tel)}</a></div>`;
+      } catch (er) {
+        btn.disabled = false; btn.textContent = "예약 신청하기";
+        show(er.message === "Failed to fetch" ? "서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요." : er.message);
+      }
+    }
+    load();
+  }
+
   function bindInquiry() {
     const form = $(".inq-form"); if (!form) return;
     const errEl = $(".inq-err", form), btn = $(".inq-submit", form);
@@ -321,11 +477,7 @@
     };
     $$('input[name="kind"]', form).forEach(r => r.addEventListener("change", syncKind));
     syncKind();
-    form.elements.phone.addEventListener("input", e => {
-      const d = e.target.value.replace(/\D/g, "").slice(0, 11);
-      e.target.value = d.length < 4 ? d : d.length < 8 ? d.replace(/^(\d{3})(\d+)/, "$1-$2")
-        : d.startsWith("02") ? d.replace(/^(02)(\d{3,4})(\d{4})$/, "$1-$2-$3") : d.replace(/^(\d{3})(\d{3,4})(\d{4})$/, "$1-$2-$3");
-    });
+    bindPhone(form.elements.phone);
     form.addEventListener("submit", async e => {
       e.preventDefault();
       errEl.hidden = true;
@@ -409,10 +561,10 @@
       <dl class="info">
         <div><dt>대상</dt><dd>어린이 · 가족 · 관광객 · 단체 (단체 환영)</dd></div>
         <div><dt>비용</dt><dd>${priceText(item.price)} — 인원과 구성에 따라 달라요</dd></div>
-        <div><dt>예약</dt><dd>${apiBase() ? `<a href="#inquiry">아래 예약 폼</a>, ` : ""}전화 <a href="${telHref(SITE.store.tel)}">${esc(SITE.store.tel)}</a> 또는 인스타그램 DM</dd></div>
+        <div><dt>예약</dt><dd>${apiBase() ? `<a href="#inquiry">아래 달력에서 온라인 예약</a>, ` : ""}전화 <a href="${telHref(SITE.store.tel)}">${esc(SITE.store.tel)}</a> 또는 인스타그램 DM</dd></div>
         <div><dt>장소</dt><dd>${esc(SITE.store.address)}</dd></div>
       </dl>
-      ${inquiryForm({ id: item.id || "o01", name: item.name || "떡체험", cat: "order" }, "reserve")}
+      ${bookingBox({ id: item.id || "o01", name: item.name || "떡체험" })}
       <div class="cta"><p>${lines(["원하시는 날짜와 인원을 알려 주시면", "일정을 안내해 드려요"])}</p><div class="btns"><a class="btn primary" href="${telHref(SITE.store.tel)}">${UI.phone} 전화 예약</a><a class="btn" href="${esc(SITE.links.instagram)}" target="_blank" rel="noopener">${UI.insta} 인스타그램 DM</a></div></div>
     </article></div>`;
   }
@@ -428,13 +580,16 @@
         <li>서비스 이용 과정에서 자동 생성: 가입·로그인 일시, 예약·문의 접수 일시, 스팸 방지를 위한 접속 정보의 암호화 값</li>
         <li>혜화담은 이메일, 비밀번호를 받지 않습니다.</li></ul>
       <h2>2. 이용 목적</h2>
-      <ul><li>회원 식별과 로그인 유지</li><li>회원 관리(가입·탈퇴 처리)</li><li>예약·문의 확인 및 연락</li></ul>
+      <ul><li>회원 식별과 로그인 유지</li><li>회원 관리(가입·탈퇴 처리)</li><li>예약·문의 확인 및 연락(예약 접수·확정·취소 카카오 알림톡 발송 포함)</li></ul>
       <h2>3. 보유 및 이용 기간</h2>
       <ul><li>회원 정보: 회원 탈퇴 시까지 보관하며, 탈퇴하면 지체 없이 삭제합니다. 탈퇴는 [내 정보] 화면의 '회원 탈퇴'에서 언제든 할 수 있습니다.</li>
         <li>예약·문의 정보: 처리(완료·취소)한 날로부터 1년이 지나면 자동으로 삭제합니다. 그 전에 삭제를 원하시면 전화로 요청해 주세요.</li></ul>
       <h2>4. 제3자 제공</h2>
       <p>혜화담은 회원의 개인정보를 제3자에게 제공하지 않습니다.</p>
       <h2>5. 처리 위탁 및 국외 이전</h2>
+      <p>예약 안내 알림톡 발송을 위해 아래와 같이 업무를 위탁합니다.</p>
+      <ul><li>수탁자: 솔라피(SOLAPI), 주식회사 카카오</li><li>위탁 업무: 예약 접수·확정·취소 카카오 알림톡 및 문자 발송</li><li>제공 항목: 이름, 연락처, 예약 메뉴·일시·인원</li></ul>
+      <p>회원 정보와 예약·문의 정보는 아래와 같이 국외에 저장됩니다.</p>
       <ul><li>수탁자: Cloudflare, Inc. (미국)</li><li>위탁 업무: 회원 정보 저장 및 로그인 서버 운영</li>
         <li>이전 항목: 회원번호, 닉네임, 가입·로그인 일시, 예약·문의 내용(이름, 연락처, 희망 일시, 인원, 요청 내용)</li><li>이전 시기·방법: 로그인·예약·문의 시 네트워크를 통해 전송</li><li>보유 기간: 3번의 보유 기간과 같음</li></ul>
       <h2>6. 회원의 권리</h2>
@@ -474,7 +629,8 @@
     bindChrome();
     if (PAGE === "home") bindSlider();
     if (PAGE === "menu") bindMenu();
-    if (PAGE === "item" || PAGE === "class") bindInquiry();
+    if (PAGE === "item") bindInquiry();
+    if (PAGE === "class") bindBooking();
     if (ext && ext.bind) ext.bind(ctx);
   }
   boot();

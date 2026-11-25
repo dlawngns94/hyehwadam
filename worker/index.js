@@ -3,6 +3,8 @@
    - 카카오 · 네이버 로그인, 회원 목록(D1 데이터베이스)
    - 관리자: 메뉴 · 사진 · 설명 수정 → GitHub 저장소의 data/menu.json 에 저장
    - 예약 · 문의 접수(메뉴 상세 · 떡체험 화면의 폼) → D1 에 저장, 관리자 화면에서 확인
+   - 떡체험 회차(날짜 · 시간 · 정원) 예약, 남은 자리 표시
+   - 카카오 알림톡(솔라피): 새 예약 → 사장님, 확정/취소 → 손님
    이 파일 하나를 Cloudflare 대시보드의 Worker 편집기에 그대로 붙여 넣으면 됩니다.
    설정 방법은 저장소의 「로그인_관리자_설정안내.md」를 보세요.
 
@@ -18,6 +20,15 @@
      GITHUB_REPO         dlawngns94/hyehwadam
      GITHUB_BRANCH       main (생략 가능)
      EXTRA_ORIGINS       추가로 허용할 사이트 주소, 쉼표로 구분 (생략 가능)
+   알림톡 (넣지 않으면 알림 없이 동작)
+     SOLAPI_API_KEY      솔라피 API Key
+     SOLAPI_API_SECRET   솔라피 API Secret (비밀)
+     SOLAPI_PFID         솔라피에 연결한 카카오톡 채널 ID (KA01PF…)
+     SOLAPI_SENDER       솔라피에 등록한 발신번호 (알림톡 실패 시 문자로 대신 보냄, 생략 가능)
+     OWNER_PHONE         새 예약 알림을 받을 사장님 휴대폰, 쉼표로 여러 명
+     ALIM_TPL_NEW        템플릿 ID — 새 예약·문의 (사장님용)
+     ALIM_TPL_CONFIRM    템플릿 ID — 예약 확정 (손님용)
+     ALIM_TPL_CANCEL     템플릿 ID — 예약 취소 (손님용)
    바인딩: D1 데이터베이스를 이름 DB 로 연결
    ========================================================= */
 
@@ -31,9 +42,9 @@ class HttpError extends Error {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
-      return await route(request, env);
+      return await route(request, env, ctx);
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.code, message: err.message }, err.status, request, env);
       console.error("[혜화담 서버]", err && err.stack || err);
@@ -43,7 +54,7 @@ export default {
 };
 
 /* ---------- 라우팅 ---------- */
-async function route(req, env) {
+async function route(req, env, ctx) {
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (req.method === "OPTIONS") return preflight(req, env);
@@ -58,7 +69,9 @@ async function route(req, env) {
   if (path.startsWith("/api/")) {
     checkConfig(env);
     /* 예약·문의 접수 — 로그인 없이도 가능 (로그인했다면 회원번호를 함께 저장) */
-    if (path === "/api/inquiries" && req.method === "POST") return json(await createInquiry(req, env), 200, req, env);
+    if (path === "/api/inquiries" && req.method === "POST") return json(await createInquiry(req, env, ctx), 200, req, env);
+    /* 떡체험 회차 · 남은 자리 — 누구나 볼 수 있음 */
+    if (path === "/api/slots" && req.method === "GET") return json(await publicSlots(url, env), 200, req, env);
     const user = await requireUser(req, env);
     if (path === "/api/me" && req.method === "GET") return json(await getMe(user, env), 200, req, env);
     if (path === "/api/me/inquiries" && req.method === "GET") return json(await myInquiries(user, env), 200, req, env);
@@ -76,6 +89,11 @@ async function route(req, env) {
       if (path === "/api/admin/menu" && req.method === "PUT") return json(await saveMenu(await readBody(req, 1_000_000), user, env), 200, req, env);
       if (path === "/api/admin/image" && req.method === "POST") return json(await saveImage(await readBody(req, 4_000_000), user, env), 200, req, env);
       if (path === "/api/admin/inquiries" && req.method === "GET") return json(await listInquiries(env), 200, req, env);
+      if (path === "/api/admin/slots" && req.method === "GET") return json(await adminSlots(url, env), 200, req, env);
+      if (path === "/api/admin/slots" && req.method === "POST") return json(await createSlots(await readBody(req, 10000), env), 200, req, env);
+      const slot = path.match(/^\/api\/admin\/slots\/(\d{1,12})$/);
+      if (slot && req.method === "PATCH") return json(await updateSlot(Number(slot[1]), await readBody(req, 5000), env), 200, req, env);
+      if (slot && req.method === "DELETE") return json(await deleteSlot(Number(slot[1]), env), 200, req, env);
       const inq = path.match(/^\/api\/admin\/inquiries\/(\d{1,12})$/);
       if (inq && req.method === "PATCH") return json(await updateInquiry(Number(inq[1]), await readBody(req, 5000), env), 200, req, env);
       if (inq && req.method === "DELETE") return json(await deleteInquiry(Number(inq[1]), env), 200, req, env);
@@ -389,6 +407,14 @@ async function ensureInquiryTable(env) {
     "item_id TEXT, item_name TEXT, name TEXT NOT NULL, phone TEXT NOT NULL, want_date TEXT, want_time TEXT, people INTEGER, message TEXT, " +
     "member_id TEXT, status TEXT NOT NULL DEFAULT 'new', memo TEXT, ip_hash TEXT, updated_at TEXT)"
   ).run();
+  /* 기능이 늘면서 생긴 칸 — 예전 표에 없으면 추가 */
+  const cols = ((await env.DB.prepare("PRAGMA table_info(inquiries)").all()).results || []).map(c => c.name);
+  if (!cols.includes("slot_id")) await env.DB.prepare("ALTER TABLE inquiries ADD COLUMN slot_id INTEGER").run();
+  if (!cols.includes("notify")) await env.DB.prepare("ALTER TABLE inquiries ADD COLUMN notify TEXT").run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS slots (id INTEGER PRIMARY KEY AUTOINCREMENT, slot_date TEXT NOT NULL, slot_time TEXT NOT NULL, " +
+    "capacity INTEGER NOT NULL, title TEXT, closed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, UNIQUE(slot_date, slot_time))"
+  ).run();
   inqReady = true;
 }
 async function optionalUser(req, env) {
@@ -400,37 +426,192 @@ async function ipHash(req, env) {
   const sig = new Uint8Array(await crypto.subtle.sign("HMAC", await hmacKey(env.SESSION_SECRET), enc.encode("ip:" + ip)));
   return [...sig.slice(0, 8)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
-const kstToday = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+const kstNow = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString();
+const kstToday = () => kstNow().slice(0, 10);
+const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s + "T00:00:00Z")) && new Date(s + "T00:00:00Z").toISOString().slice(0, 10) === s;
+const isTime = s => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+const addDays = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
+const fmtPhone = d => d.replace(/^(02)(\d{3,4})(\d{4})$/, "$1-$2-$3").replace(/^(0\d{2})(\d{3,4})(\d{4})$/, "$1-$2-$3");
+/* 뒤에서 처리 (응답을 늦추지 않음). 테스트처럼 ctx 가 없으면 기다림 */
+async function later(ctx, p) { if (ctx && ctx.waitUntil) ctx.waitUntil(p); else await p; }
 
-async function createInquiry(req, env) {
+/* ---------- 떡체험 회차 (날짜 · 시간 · 정원) ---------- */
+const USED = "COALESCE((SELECT SUM(COALESCE(i.people, 1)) FROM inquiries i WHERE i.slot_id = s.id AND i.status != 'canceled'), 0)";
+const slotOut = r => ({ id: r.id, date: r.slot_date, time: r.slot_time, capacity: r.capacity, booked: r.booked, remaining: Math.max(0, r.capacity - r.booked), closed: !!r.closed, title: r.title || "떡체험" });
+function range(url, defFrom, defTo, maxDays) {
+  let from = url.searchParams.get("from") || defFrom, to = url.searchParams.get("to") || defTo;
+  if (!isDate(from) || !isDate(to)) throw new HttpError(400, "invalid", "날짜 형식이 잘못됐어요.");
+  if (to < from) [from, to] = [to, from];
+  if (to > addDays(from, maxDays)) to = addDays(from, maxDays);
+  return [from, to];
+}
+async function publicSlots(url, env) {
+  await ensureInquiryTable(env);
+  const today = kstToday(), nowHM = kstNow().slice(11, 16);
+  let [from, to] = range(url, today, addDays(today, 62), 93);
+  if (from < today) from = today;
+  const r = await env.DB.prepare(`SELECT s.*, ${USED} AS booked FROM slots s WHERE s.slot_date BETWEEN ? AND ? ORDER BY s.slot_date, s.slot_time`).bind(from, to).all();
+  return { today, slots: (r.results || []).filter(s => !(s.slot_date === today && s.slot_time <= nowHM)).map(slotOut) };
+}
+async function adminSlots(url, env) {
+  await ensureInquiryTable(env);
+  const today = kstToday();
+  const [from, to] = range(url, addDays(today, -7), addDays(today, 93), 186);
+  const r = await env.DB.prepare(`SELECT s.*, ${USED} AS booked FROM slots s WHERE s.slot_date BETWEEN ? AND ? ORDER BY s.slot_date, s.slot_time`).bind(from, to).all();
+  return { today, slots: (r.results || []).map(slotOut) };
+}
+async function createSlots(b, env) {
+  const bad = msg => { throw new HttpError(400, "invalid", msg); };
+  const from = str(b && b.from, 10), to = str(b && b.to, 10) || from;
+  if (!isDate(from) || !isDate(to)) bad("시작일과 종료일을 골라 주세요.");
+  if (to < from) bad("종료일이 시작일보다 빨라요.");
+  if (from < kstToday()) bad("지난 날짜에는 회차를 만들 수 없어요.");
+  if (to > addDays(from, 186)) bad("한 번에 6개월까지만 만들 수 있어요.");
+  const weekdays = Array.isArray(b.weekdays) ? b.weekdays.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6) : [];
+  if (!weekdays.length) bad("요일을 하나 이상 골라 주세요.");
+  const times = [...new Set((Array.isArray(b.times) ? b.times : []).map(t => str(t, 5)))].filter(Boolean);
+  if (!times.length || times.some(t => !isTime(t))) bad("시간을 11:00 처럼 입력해 주세요.");
+  const capacity = Number(b.capacity);
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 500) bad("정원은 1~500 사이 숫자로 입력해 주세요.");
+  const title = str(b.title, 30) || "떡체험";
+  const rows = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) if (weekdays.includes(new Date(d + "T00:00:00Z").getUTCDay())) for (const t of times) rows.push([d, t]);
+  if (!rows.length) bad("고른 기간에 해당 요일이 없어요.");
+  if (rows.length > 400) bad(`회차가 ${rows.length}개로 너무 많아요. 한 번에 400개까지 만들 수 있어요.`);
+  await ensureInquiryTable(env);
+  let created = 0;
+  const ts = new Date().toISOString();
+  for (const [d, t] of rows) {
+    const r = await env.DB.prepare("INSERT OR IGNORE INTO slots (slot_date, slot_time, capacity, title, closed, created_at) VALUES (?, ?, ?, ?, 0, ?)").bind(d, t, capacity, title, ts).run();
+    if (r && r.meta && r.meta.changes) created++;
+  }
+  return { ok: true, created, skipped: rows.length - created };
+}
+async function slotRow(env, id) {
+  return env.DB.prepare(`SELECT s.*, ${USED} AS booked FROM slots s WHERE s.id = ?`).bind(id).first();
+}
+async function updateSlot(id, b, env) {
+  await ensureInquiryTable(env);
+  const s = await slotRow(env, id);
+  if (!s) throw new HttpError(404, "not_found", "이미 삭제된 회차예요.");
+  let capacity = s.capacity, closed = s.closed, title = s.title;
+  if (b.capacity !== undefined) {
+    capacity = Number(b.capacity);
+    if (!Number.isInteger(capacity) || capacity < 1 || capacity > 500) throw new HttpError(400, "invalid", "정원은 1~500 사이 숫자로 입력해 주세요.");
+    if (capacity < s.booked) throw new HttpError(409, "conflict", `이미 ${s.booked}명이 예약해서 정원을 ${s.booked}명보다 줄일 수 없어요.`);
+  }
+  if (b.closed !== undefined) closed = b.closed ? 1 : 0;
+  if (b.title !== undefined) title = str(b.title, 30) || "떡체험";
+  await env.DB.prepare("UPDATE slots SET capacity = ?, closed = ?, title = ? WHERE id = ?").bind(capacity, closed, title, id).run();
+  return { ok: true, slot: slotOut(await slotRow(env, id)) };
+}
+async function deleteSlot(id, env) {
+  await ensureInquiryTable(env);
+  const s = await slotRow(env, id);
+  if (!s) return { ok: true };
+  if (s.booked > 0) throw new HttpError(409, "conflict", "예약이 있는 회차는 삭제할 수 없어요. 대신 '마감'을 눌러 주세요.");
+  await env.DB.prepare("DELETE FROM slots WHERE id = ?").bind(id).run();
+  return { ok: true };
+}
+
+/* ---------- 카카오 알림톡 (솔라피) ---------- */
+const alimReady = env => !!(env.SOLAPI_API_KEY && env.SOLAPI_API_SECRET && env.SOLAPI_PFID);
+async function solapiAuth(env) {
+  const date = new Date().toISOString(), salt = randomHex(16);
+  const key = await crypto.subtle.importKey("raw", enc.encode(env.SOLAPI_API_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(date + salt)))].map(b => b.toString(16).padStart(2, "0")).join("");
+  return `HMAC-SHA256 apiKey=${env.SOLAPI_API_KEY}, date=${date}, salt=${salt}, signature=${sig}`;
+}
+async function sendAlimtalk(env, toList, templateId, variables) {
+  if (!alimReady(env)) return { sent: false, reason: "알림톡 설정 전" };
+  if (!templateId) return { sent: false, reason: "템플릿 설정 전" };
+  const to = toList.map(t => String(t).replace(/\D/g, "")).filter(t => /^0\d{8,10}$/.test(t));
+  if (!to.length) return { sent: false, reason: "받는 번호 없음" };
+  const sender = String(env.SOLAPI_SENDER || "").replace(/\D/g, "");
+  const messages = to.map(n => {
+    const m = { to: n, kakaoOptions: { pfId: env.SOLAPI_PFID, templateId, variables, disableSms: !sender } };
+    if (sender) m.from = sender;
+    return m;
+  });
+  try {
+    const r = await fetch("https://api.solapi.com/messages/v4/send-many/detail", {
+      method: "POST", headers: { Authorization: await solapiAuth(env), "Content-Type": "application/json" }, body: JSON.stringify({ messages })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { console.error("[알림톡]", r.status, JSON.stringify(j)); return { sent: false, reason: j.errorMessage || j.message || "발송 실패 " + r.status }; }
+    const failed = j.failedMessageList || [];
+    if (failed.length) { console.error("[알림톡 실패]", JSON.stringify(failed)); return { sent: false, reason: failed[0].statusMessage || "발송 실패" }; }
+    return { sent: true };
+  } catch (err) {
+    console.error("[알림톡]", err && err.stack || err);
+    return { sent: false, reason: "알림톡 서버 연결 실패" };
+  }
+}
+/* 템플릿에 들어가는 값 — 알림톡은 빈 값을 못 넣어서 '-' 로 채움 */
+function inqVars(r, keys) {
+  const all = {
+    "#{고객명}": r.name, "#{연락처}": r.phone, "#{종류}": r.kind === "reserve" ? "예약·주문" : "문의",
+    "#{메뉴}": r.item_name || "-", "#{일시}": [r.want_date, r.want_time].filter(Boolean).join(" ") || "-",
+    "#{인원}": r.people ? String(r.people) : "-", "#{요청}": (r.message || "-").replace(/\s+/g, " ").slice(0, 300)
+  };
+  return Object.fromEntries(keys.map(k => [k, all[k]]));
+}
+const ownerPhones = env => String(env.OWNER_PHONE || "").split(",").map(s => s.trim()).filter(Boolean);
+async function recordNotify(env, id, label, result) {
+  await env.DB.prepare("UPDATE inquiries SET notify = ? WHERE id = ?").bind(JSON.stringify({ label, ...result, at: new Date().toISOString() }), id).run();
+}
+async function notifyOwnerNew(env, id) {
+  const r = await env.DB.prepare("SELECT * FROM inquiries WHERE id = ?").bind(id).first();
+  if (!r) return;
+  const res = await sendAlimtalk(env, ownerPhones(env), env.ALIM_TPL_NEW, inqVars(r, ["#{종류}", "#{메뉴}", "#{고객명}", "#{연락처}", "#{일시}", "#{인원}", "#{요청}"]));
+  await recordNotify(env, id, "사장님 알림", res);
+}
+async function notifyCustomer(env, r, status) {
+  const tpl = status === "done" ? env.ALIM_TPL_CONFIRM : env.ALIM_TPL_CANCEL;
+  const keys = status === "done" ? ["#{고객명}", "#{메뉴}", "#{일시}", "#{인원}"] : ["#{고객명}", "#{메뉴}", "#{일시}"];
+  const res = await sendAlimtalk(env, [r.phone], tpl, inqVars(r, keys));
+  await recordNotify(env, r.id, status === "done" ? "고객 확정 알림" : "고객 취소 알림", res);
+  return res;
+}
+function alimStatus(env) {
+  return { ready: alimReady(env), owner: ownerPhones(env).length > 0, sender: !!env.SOLAPI_SENDER,
+    templates: { new: !!env.ALIM_TPL_NEW, confirm: !!env.ALIM_TPL_CONFIRM, cancel: !!env.ALIM_TPL_CANCEL } };
+}
+
+/* ---------- 예약 · 문의 접수 ---------- */
+async function createInquiry(req, env, ctx) {
   const b = await readBody(req, 20000);
   const bad = msg => { throw new HttpError(400, "invalid", msg); };
   if (!b || typeof b !== "object") bad("요청 형식이 잘못됐어요.");
   if (b.website) return { ok: true, id: 0 }; /* 스팸 로봇용 숨은 칸 — 사람은 비워 둠 */
-  const kind = b.kind === "reserve" ? "reserve" : "inquiry";
+  const slotId = b.slotId !== undefined && b.slotId !== null && b.slotId !== "" ? Number(b.slotId) : null;
+  if (slotId !== null && (!Number.isInteger(slotId) || slotId < 1)) bad("회차 정보가 잘못됐어요.");
+  const kind = slotId ? "reserve" : b.kind === "reserve" ? "reserve" : "inquiry";
   const name = str(b.name, 30);
   if (!name) bad("이름을 입력해 주세요.");
   const phone = str(b.phone, 20);
   const digits = phone.replace(/\D/g, "");
   if (!/^0\d{8,10}$/.test(digits) || /[^\d\s-]/.test(phone)) bad("연락처를 정확히 입력해 주세요. 예: 010-1234-5678");
-  const date = str(b.date, 10);
-  if (date) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(Date.parse(date + "T00:00:00Z"))) bad("날짜를 다시 골라 주세요.");
-    if (date < kstToday()) bad("지난 날짜는 고를 수 없어요.");
-  } else if (kind === "reserve") bad("희망 날짜를 골라 주세요.");
-  const time = str(b.time, 5);
-  if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) bad("시간을 다시 골라 주세요.");
+  let date = str(b.date, 10), time = str(b.time, 5);
+  if (!slotId) {
+    if (date) {
+      if (!isDate(date)) bad("날짜를 다시 골라 주세요.");
+      if (date < kstToday()) bad("지난 날짜는 고를 수 없어요.");
+    } else if (kind === "reserve") bad("희망 날짜를 골라 주세요.");
+    if (time && !isTime(time)) bad("시간을 다시 골라 주세요.");
+  }
   let people = null;
   if (b.people !== undefined && b.people !== null && b.people !== "") {
     people = Number(b.people);
     if (!Number.isInteger(people) || people < 1 || people > 1000) bad("인원·수량은 1~1000 사이 숫자로 입력해 주세요.");
   }
+  if (slotId && !people) bad("인원을 입력해 주세요.");
   const message = str(b.message, 1000);
   if (kind === "inquiry" && !message) bad("문의 내용을 입력해 주세요.");
   if (b.agree !== true) bad("개인정보 수집·이용에 동의해 주세요.");
   const itemId = str(b.itemId, 24);
   if (itemId && !/^[a-z0-9-]{1,24}$/.test(itemId)) bad("메뉴 정보가 잘못됐어요.");
-  const itemName = str(b.itemName, 80);
+  let itemName = str(b.itemName, 80);
 
   await ensureInquiryTable(env);
   const ih = await ipHash(req, env);
@@ -438,17 +619,44 @@ async function createInquiry(req, env) {
   const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM inquiries WHERE ip_hash = ? AND created_at > ?").bind(ih, since).first();
   if (recent && recent.n >= 5) throw new HttpError(429, "too_many", "짧은 시간에 너무 많이 보냈어요. 잠시 후 다시 시도해 주세요.");
 
+  if (slotId) {
+    const s = await slotRow(env, slotId);
+    const nowHM = kstNow().slice(11, 16), today = kstToday();
+    if (!s || s.closed) throw new HttpError(409, "slot_closed", "이 회차는 예약을 받지 않아요. 다른 회차를 골라 주세요.");
+    if (s.slot_date < today || (s.slot_date === today && s.slot_time <= nowHM)) throw new HttpError(409, "slot_closed", "이미 지난 회차예요. 다른 회차를 골라 주세요.");
+    date = s.slot_date; time = s.slot_time;
+    itemName = itemName || s.title || "떡체험";
+  }
+
   const user = await optionalUser(req, env);
-  const r = await env.DB.prepare(
-    "INSERT INTO inquiries (created_at, kind, item_id, item_name, name, phone, want_date, want_time, people, message, member_id, status, ip_hash) " +
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)"
-  ).bind(new Date().toISOString(), kind, itemId || null, itemName || null, name, digits.replace(/^(\d{2,3})(\d{3,4})(\d{4})$/, "$1-$2-$3"), date || null, time || null, people, message || null, user ? user.sub : null, ih).run();
-  return { ok: true, id: r && r.meta ? r.meta.last_row_id : 0 };
+  const vals = [new Date().toISOString(), kind, itemId || null, itemName || null, name, fmtPhone(digits), date || null, time || null, people, message || null, user ? user.sub : null, ih, slotId];
+  const cols = "created_at, kind, item_id, item_name, name, phone, want_date, want_time, people, message, member_id, status, ip_hash, slot_id";
+  let r;
+  if (slotId) {
+    /* 정원 확인과 저장을 한 번에 — 동시에 눌러도 정원을 넘지 않음 */
+    r = await env.DB.prepare(
+      `INSERT INTO inquiries (${cols}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ? ` +
+      `WHERE (SELECT capacity FROM slots WHERE id = ? AND closed = 0) - COALESCE((SELECT SUM(COALESCE(people, 1)) FROM inquiries WHERE slot_id = ? AND status != 'canceled'), 0) >= ?`
+    ).bind(...vals, slotId, slotId, people).run();
+    if (!r || !r.meta || !r.meta.changes) {
+      const s = await slotRow(env, slotId);
+      const left = s ? Math.max(0, s.capacity - s.booked) : 0;
+      throw new HttpError(409, "full", left ? `남은 자리가 ${left}자리예요. 인원을 줄이거나 다른 회차를 골라 주세요.` : "방금 마감됐어요. 다른 회차를 골라 주세요.");
+    }
+  } else {
+    r = await env.DB.prepare(`INSERT INTO inquiries (${cols}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).bind(...vals).run();
+  }
+  const id = r && r.meta ? r.meta.last_row_id : 0;
+  if (id) await later(ctx, notifyOwnerNew(env, id).catch(e => console.error("[알림톡]", e)));
+  return { ok: true, id, date, time };
 }
 
 const inqOut = (r, full) => {
-  const o = { id: r.id, createdAt: r.created_at, kind: r.kind, itemId: r.item_id, itemName: r.item_name, date: r.want_date, time: r.want_time, people: r.people, message: r.message, status: r.status };
-  if (full) Object.assign(o, { name: r.name, phone: r.phone, memberId: r.member_id, memo: r.memo, updatedAt: r.updated_at });
+  const o = { id: r.id, createdAt: r.created_at, kind: r.kind, itemId: r.item_id, itemName: r.item_name, date: r.want_date, time: r.want_time, people: r.people, message: r.message, status: r.status, slotId: r.slot_id || null };
+  if (full) {
+    let notify = null; try { notify = r.notify ? JSON.parse(r.notify) : null; } catch { /* 무시 */ }
+    Object.assign(o, { name: r.name, phone: r.phone, memberId: r.member_id, memo: r.memo, updatedAt: r.updated_at, notify });
+  }
   return o;
 };
 async function listInquiries(env) {
@@ -459,17 +667,26 @@ async function listInquiries(env) {
   const counts = await env.DB.prepare("SELECT status, COUNT(*) AS n FROM inquiries GROUP BY status").all();
   const c = { new: 0, done: 0, canceled: 0 };
   for (const x of counts.results || []) if (x.status in c) c[x.status] = x.n;
-  return { counts: c, inquiries: (r.results || []).map(x => inqOut(x, true)) };
+  return { counts: c, inquiries: (r.results || []).map(x => inqOut(x, true)), alimtalk: alimStatus(env) };
 }
 async function updateInquiry(id, body, env) {
   await ensureInquiryTable(env);
-  const row = await env.DB.prepare("SELECT id, status, memo FROM inquiries WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT * FROM inquiries WHERE id = ?").bind(id).first();
   if (!row) throw new HttpError(404, "not_found", "이미 삭제된 예약·문의예요.");
   const status = body && body.status !== undefined ? String(body.status) : row.status;
   if (!INQ_STATUS.includes(status)) throw new HttpError(400, "invalid", "상태 값이 잘못됐어요.");
   const memo = body && body.memo !== undefined ? str(body.memo, 500) : row.memo;
+  /* 취소했던 회차 예약을 되살릴 때는 남은 자리를 다시 확인 */
+  if (row.slot_id && row.status === "canceled" && status !== "canceled") {
+    const s = await slotRow(env, row.slot_id);
+    if (s && s.capacity - s.booked < (row.people || 1)) throw new HttpError(409, "full", `그 회차에 남은 자리가 ${Math.max(0, s.capacity - s.booked)}자리라 되살릴 수 없어요.`);
+  }
   await env.DB.prepare("UPDATE inquiries SET status = ?, memo = ?, updated_at = ? WHERE id = ?").bind(status, memo || null, new Date().toISOString(), id).run();
-  return { ok: true };
+  let notify = null;
+  if (status !== row.status && (status === "done" || status === "canceled") && row.kind === "reserve" && !(body && body.notify === false)) {
+    notify = await notifyCustomer(env, row, status);
+  }
+  return { ok: true, notify };
 }
 async function deleteInquiry(id, env) {
   await ensureInquiryTable(env);

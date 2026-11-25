@@ -495,3 +495,99 @@ code,.mid{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:
   .inq-card{padding:16px}
   .inq-card .top time{width:100%;margin-left:0}
 }
+
+/* =========================================================
+   떡체험 달력 예약
+   ========================================================= */
+.book{max-width:900px}
+.book-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;align-items:start}
+.cal,.slot-pick{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-head b{font-size:16px;color:var(--brand-deep)}
+.cal-nav{width:36px;height:36px;border-radius:50%;font-size:22px;line-height:1;color:var(--brand-deep)}
+.cal-nav:hover:not(:disabled){background:var(--brand-soft)}
+.cal-nav:disabled{opacity:.25;cursor:default}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cw{text-align:center;font-size:12px;color:var(--mute);padding:4px 0}
+.cw.sun{color:#c0504d}.cw.sat{color:#3d6fb4}
+.cd{aspect-ratio:1/1.05;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:14px;min-width:0}
+.cd b{font-weight:500}
+.cd small{font-size:10.5px;line-height:1.1;white-space:nowrap}
+.cd.off{color:#c9cbc4}
+.cd.has{background:var(--brand-soft);color:var(--brand-deep);cursor:pointer}
+.cd.has small{color:var(--brand);font-weight:700}
+.cd.has:hover{background:#d5e7dc}
+.cd.full{background:#f3f1ec;color:var(--mute);cursor:pointer}
+.cd.sel{background:var(--brand)!important;color:#fff!important}
+.cd.sel small{color:#fff!important}
+.cd.today b{text-decoration:underline;text-underline-offset:3px}
+.cal-legend{display:flex;align-items:center;gap:6px;margin:10px 0 0;font-size:12px;color:var(--mute)}
+.lg{width:12px;height:12px;border-radius:3px;display:inline-block;margin-left:6px}
+.lg.has{background:var(--brand-soft);border:1px solid #cfe1d5}.lg.full{background:#f3f1ec;border:1px solid var(--line)}
+.slot-pick h3{margin:0 0 10px;font-size:16px;color:var(--brand-deep)}
+.slot-pick.empty{color:var(--mute);text-align:center;padding:48px 16px;font-size:14px}
+.slots{display:grid;gap:8px}
+.slot{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"time title n" "bar bar bar";align-items:center;gap:4px 10px;text-align:left;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+.slot b{grid-area:time;font-size:16px;color:var(--ink)}
+.slot-t{grid-area:title;font-size:13px;color:var(--sub);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot-n{grid-area:n;font-size:13px;color:var(--sub);white-space:nowrap}
+.slot-n em{font-style:normal;font-weight:700;color:var(--brand);font-size:15px}
+.slot .bar{grid-area:bar;height:4px;background:#eee;border-radius:2px;overflow:hidden}
+.slot .bar i{display:block;height:100%;background:var(--accent)}
+.slot:hover:not(:disabled){border-color:var(--brand)}
+.slot.sel{border-color:var(--brand);background:var(--brand-soft)}
+.slot:disabled{opacity:.55;cursor:not-allowed}
+.slot:disabled .slot-n{color:#b4432f;font-weight:700}
+.book-form{margin-top:18px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+.book-form .fld input,.book-form .fld textarea{background:#fff}
+.book-sum{margin:0;padding:10px 12px;background:var(--brand-soft);border-radius:8px;color:var(--brand-deep);font-size:14.5px}
+.book .notice{margin-bottom:14px}
+.prose .book p.book-sum{margin:0}
+.prose .cal-legend{margin:10px 0 0;font-size:12px;line-height:1.4;color:var(--mute)}
+@media (max-width:760px){
+  .book-grid{grid-template-columns:1fr}
+  .cd small{font-size:9.5px}
+  .book-form .fld-row.r3{grid-template-columns:1fr}
+  .book-form .fld-row.r3 .fld:first-child{grid-column:auto}
+}
+
+/* 관리자: 떡체험 회차 */
+.alim-bar{border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13.5px;background:#f3f1ec;color:var(--sub)}
+.alim-bar.on{background:var(--brand-soft);color:var(--brand-deep)}
+.inq-card .ntf{font-size:12.5px;color:var(--mute);margin:0}
+.inq-card .ntf.ok{color:var(--brand)}
+.inq-card .ntf.no{color:#b4432f}
+.slot-adm{display:grid;gap:18px}
+.slot-add{border:1px solid var(--line);border-radius:12px;padding:18px;background:var(--cream);display:grid;gap:12px}
+.slot-add h3{margin:0;font-size:16px;color:var(--brand-deep)}
+.slot-add .fld input{background:#fff}
+.slot-add .row{display:grid;grid-template-columns:1fr 1fr 1.4fr .7fr 1fr;gap:10px;align-items:end}
+.wd{display:flex;gap:4px;flex-wrap:wrap}
+.wd label{cursor:pointer}
+.wd input{position:absolute;opacity:0;pointer-events:none}
+.wd span{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:700;color:var(--sub)}
+.wd input:checked + span{background:var(--brand);border-color:var(--brand);color:#fff}
+.wd input:focus-visible + span{outline:2px solid var(--brand);outline-offset:2px}
+.slot-month{display:flex;align-items:center;gap:10px}
+.slot-month b{font-size:16px;color:var(--brand-deep);min-width:96px;text-align:center}
+.slot-day{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.slot-day h4{margin:0;padding:10px 16px;background:var(--cream);font-size:14px;color:var(--brand-deep);border-bottom:1px solid var(--line)}
+.slot-row{display:grid;grid-template-columns:60px 1fr 190px 300px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.slot-row:last-child{border-bottom:0}
+.slot-row.past{opacity:.5}
+.slot-row .cap{display:grid;gap:4px}
+.slot-row .cap .bar{height:5px;background:#eee;border-radius:3px;overflow:hidden}
+.slot-row .cap .bar i{display:block;height:100%;background:var(--accent)}
+.slot-row .cap small{color:var(--sub)}
+.slot-row .ops{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-start}
+.slot-row .ops input{width:64px;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:13px}
+.slot-row .ops .btn{height:32px;padding-inline:10px;font-size:12.5px}
+@media (max-width:760px){
+  .slot-add .row{grid-template-columns:1fr 1fr}
+  .slot-row{grid-template-columns:52px 1fr;}
+  .slot-row .cap{grid-column:1 / -1}
+  .slot-row .ops{grid-column:1 / -1;justify-content:flex-start}
+}
+
+.ok-msg{color:var(--brand)!important;font-weight:700}
+.slot-add .acts{display:flex;align-items:center;gap:12px;flex-wrap:wrap}

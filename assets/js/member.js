@@ -120,7 +120,7 @@
       api(ctx, "/api/me/inquiries").then(r => {
         if (!r.inquiries.length) return;
         const el = ctx.$("#my-inq"); el.hidden = false;
-        el.innerHTML = `<h3>내 예약 · 문의</h3><ul>${r.inquiries.map(x => `<li><span class="st ${ctx.esc(x.status)}">${({ new: "접수됨", done: "확인 완료", canceled: "취소" })[x.status] || ""}</span><b>${ctx.esc(x.itemName || "")}</b>${x.date ? `<span>${ctx.esc(x.date)}${x.time ? " " + ctx.esc(x.time) : ""}</span>` : ""}<small>${fmtDate(x.createdAt)} 접수</small></li>`).join("")}</ul>`;
+        el.innerHTML = `<h3>내 예약 · 문의</h3><ul>${r.inquiries.map(x => `<li><span class="st ${ctx.esc(x.status)}">${(x.kind === "reserve" ? { new: "확인 중", done: "예약 확정", canceled: "예약 취소" } : { new: "접수됨", done: "답변 완료", canceled: "취소" })[x.status] || ""}</span><b>${ctx.esc(x.itemName || "")}</b>${x.date ? `<span>${ctx.esc(x.date)}${x.time ? " " + ctx.esc(x.time) : ""}</span>` : ""}<small>${fmtDate(x.createdAt)} 접수</small></li>`).join("")}</ul>`;
       }).catch(() => { /* 내역은 없어도 됨 */ });
       const wb = ctx.$("#withdraw-box");
       ctx.$("#withdraw").addEventListener("click", () => { wb.hidden = false; });
@@ -154,43 +154,59 @@
 
   const KIND = { reserve: "예약 · 주문", inquiry: "문의" };
   const STATUS = { new: "새 문의", done: "확인 완료", canceled: "취소" };
+  const STATUS_R = { new: "새 예약", done: "예약 확정", canceled: "예약 취소" };
+  const stLabel = x => (x.kind === "reserve" ? STATUS_R : STATUS)[x.status] || x.status;
+  const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+  const dayLabel = d => { const x = new Date(d + "T00:00:00Z"); return `${x.getUTCMonth() + 1}월 ${x.getUTCDate()}일 (${WEEK[x.getUTCDay()]})`; };
   async function loadInquiries(ctx, me) {
     const esc = ctx.esc, panel = ctx.$('[data-panel="inq"]');
-    let list = [], filter = "new";
+    let list = [], filter = "new", alim = null;
     const badge = () => { const n = list.filter(x => x.status === "new").length, b = ctx.$("#inq-badge"); b.textContent = n; b.hidden = !n; };
     const telHref = t => "tel:" + String(t || "").replace(/[^0-9+]/g, "");
+    const alimBar = () => {
+      if (!alim) return "";
+      if (!alim.ready) return `<div class="alim-bar">카카오 알림톡이 아직 연결되지 않았어요. 연결하면 새 예약은 사장님께, 확정·취소는 손님께 자동으로 알림이 가요. (설정 안내서 참고)</div>`;
+      const miss = [!alim.owner && "사장님 번호(OWNER_PHONE)", !alim.templates.new && "새 예약 템플릿", !alim.templates.confirm && "확정 템플릿", !alim.templates.cancel && "취소 템플릿"].filter(Boolean);
+      return `<div class="alim-bar on">카카오 알림톡 연결됨${miss.length ? ` · 아직 설정 안 된 것: ${miss.join(", ")}` : " · 새 예약은 사장님께, 확정·취소는 손님께 자동 발송돼요."}</div>`;
+    };
+    const ntfLine = n => !n ? "" : `<p class="ntf ${n.sent ? "ok" : "no"}">알림톡 · ${esc(n.label || "")} ${n.sent ? "보냄" : "못 보냄 (" + esc(n.reason || "") + ")"}${n.at ? " · " + fmtTime(n.at) : ""}</p>`;
     function render() {
       const c = { all: list.length, new: 0, done: 0, canceled: 0 };
       list.forEach(x => { c[x.status] = (c[x.status] || 0) + 1; });
       const rows = list.filter(x => filter === "all" || x.status === filter);
-      panel.innerHTML = `<div class="inq-filter" role="group" aria-label="상태로 보기">
+      panel.innerHTML = alimBar() + `<div class="inq-filter" role="group" aria-label="상태로 보기">
           ${[["new", "새 문의"], ["done", "확인 완료"], ["canceled", "취소"], ["all", "전체"]].map(([k, v]) => `<button type="button" data-f="${k}" aria-pressed="${filter === k}">${v} ${c[k]}</button>`).join("")}
           <button type="button" class="link-btn" id="inq-reload">새로고침</button>
         </div>
-        <div class="inq-list">${rows.map(x => `
+        <div class="inq-list">${rows.map(x => {
+          const r = x.kind === "reserve";
+          return `
           <article class="inq-card st-${esc(x.status)}" data-id="${x.id}">
-            <div class="top"><span class="st ${esc(x.status)}">${STATUS[x.status] || esc(x.status)}</span><span class="kind">${KIND[x.kind] || esc(x.kind)}</span>
+            <div class="top"><span class="st ${esc(x.status)}">${esc(stLabel(x))}</span><span class="kind">${x.slotId ? "회차 예약" : KIND[x.kind] || esc(x.kind)}</span>
               <h3>${esc(x.itemName || "메뉴 미지정")}</h3><time>접수 ${fmtTime(x.createdAt)} · #${x.id}</time></div>
             <dl>
               <div><dt>이름</dt><dd>${esc(x.name)}${x.memberId ? ' <span class="chip">회원</span>' : ""}</dd></div>
               <div><dt>연락처</dt><dd><a href="${telHref(x.phone)}">${esc(x.phone)}</a></dd></div>
-              ${x.date ? `<div><dt>희망 날짜</dt><dd>${esc(x.date)}${x.time ? " " + esc(x.time) : ""}</dd></div>` : ""}
-              ${x.people ? `<div><dt>인원 · 수량</dt><dd>${esc(x.people)}</dd></div>` : ""}
+              ${x.date ? `<div><dt>${x.slotId ? "예약 일시" : "희망 날짜"}</dt><dd>${esc(dayLabel(x.date))}${x.time ? " " + esc(x.time) : ""}</dd></div>` : ""}
+              ${x.people ? `<div><dt>${x.slotId ? "인원" : "인원 · 수량"}</dt><dd>${esc(x.people)}${x.slotId ? "명" : ""}</dd></div>` : ""}
             </dl>
             ${x.message ? `<p class="msg">${esc(x.message)}</p>` : ""}
+            ${ntfLine(x.notify)}
             <div class="memo"><input type="text" maxlength="500" placeholder="관리자 메모 (손님에게는 안 보여요)" value="${esc(x.memo || "")}" aria-label="관리자 메모"><button type="button" class="btn sm" data-act="memo">메모 저장</button></div>
             <div class="acts">
-              ${x.status !== "done" ? `<button type="button" class="btn primary sm" data-act="done">확인 완료</button>` : ""}
-              ${x.status !== "canceled" ? `<button type="button" class="btn sm" data-act="canceled">취소 처리</button>` : ""}
+              ${x.status !== "done" ? `<button type="button" class="btn primary sm" data-act="done">${r ? "예약 확정" : "확인 완료"}</button>` : ""}
+              ${x.status !== "canceled" ? `<button type="button" class="btn sm" data-act="canceled">${r ? "예약 취소" : "취소 처리"}</button>` : ""}
               ${x.status !== "new" ? `<button type="button" class="btn sm" data-act="new">새 문의로 되돌리기</button>` : ""}
               <button type="button" class="link-btn danger" data-act="del">삭제</button>
             </div>
-          </article>`).join("") || `<p class="empty">${filter === "new" ? "새로 들어온 예약·문의가 없어요." : "해당하는 예약·문의가 없어요."}</p>`}</div>`;
+            ${r && alim && alim.ready && x.status === "new" ? `<p class="hint">예약 확정·취소를 누르면 손님께 알림톡이 가요.</p>` : ""}
+          </article>`;
+        }).join("") || `<p class="empty">${filter === "new" ? "새로 들어온 예약·문의가 없어요." : "해당하는 예약·문의가 없어요."}</p>`}</div>`;
       badge();
     }
     async function load() {
       panel.innerHTML = `<p class="loading">예약 · 문의를 불러오는 중…</p>`;
-      try { list = (await api(ctx, "/api/admin/inquiries")).inquiries; render(); }
+      try { const r = await api(ctx, "/api/admin/inquiries"); list = r.inquiries; alim = r.alimtalk || null; render(); }
       catch (err) { panel.innerHTML = `<div class="notice warn">${esc(err.message)}</div>`; }
     }
     panel.addEventListener("click", async e => {
@@ -205,9 +221,93 @@
       try {
         if (act === "del") { await api(ctx, "/api/admin/inquiries/" + id, { method: "DELETE" }); list = list.filter(x => x.id !== id); }
         else if (act === "memo") { const memo = ctx.$("input", card).value; await api(ctx, "/api/admin/inquiries/" + id, { method: "PATCH", body: { memo } }); item.memo = memo; b.textContent = "저장됨"; setTimeout(() => { b.textContent = "메모 저장"; b.disabled = false; }, 1200); return; }
-        else { await api(ctx, "/api/admin/inquiries/" + id, { method: "PATCH", body: { status: act, memo: ctx.$("input", card).value } }); item.status = act; item.memo = ctx.$("input", card).value; }
+        else {
+          const r = await api(ctx, "/api/admin/inquiries/" + id, { method: "PATCH", body: { status: act, memo: ctx.$("input", card).value } });
+          item.status = act; item.memo = ctx.$("input", card).value;
+          if (r.notify) item.notify = { label: act === "done" ? "고객 확정 알림" : "고객 취소 알림", ...r.notify, at: new Date().toISOString() };
+        }
         render();
       } catch (err) { b.disabled = false; card.insertAdjacentHTML("beforeend", `<p class="err">${esc(err.message)}</p>`); }
+    });
+    load();
+  }
+
+  /* ---------- 관리자: 떡체험 회차 ---------- */
+  function loadSlots(ctx) {
+    const esc = ctx.esc, panel = ctx.$('[data-panel="slots"]');
+    const kst = () => new Date(Date.now() + 9 * 3600e3).toISOString();
+    const today = kst().slice(0, 10), nowHM = kst().slice(11, 16);
+    const addDays = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
+    let month = today.slice(0, 7), slots = [], msg = "";
+    const monthAdd = (m, n) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo - 1 + n, 1)).toISOString().slice(0, 7); };
+    const lastDay = m => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); };
+    panel.innerHTML = `<div class="slot-adm">
+      <form class="slot-add" novalidate>
+        <h3>회차 한꺼번에 만들기</h3>
+        <div class="row">
+          <label class="fld"><span>시작일</span><input name="from" type="date" min="${today}" value="${today}"></label>
+          <label class="fld"><span>종료일</span><input name="to" type="date" min="${today}" value="${addDays(today, 27)}"></label>
+          <label class="fld"><span>시간 <small>쉼표로 여러 개</small></span><input name="times" placeholder="11:00, 14:00, 16:00" value="11:00, 14:00"></label>
+          <label class="fld"><span>정원</span><input name="capacity" type="number" min="1" max="500" value="10" inputmode="numeric"></label>
+          <label class="fld"><span>이름</span><input name="title" maxlength="30" value="떡체험"></label>
+        </div>
+        <fieldset class="fld"><legend>요일</legend><div class="wd">${WEEK.map((w, i) => `<label><input type="checkbox" name="wd" value="${i}"${i === 0 || i === 6 ? " checked" : ""}><span>${w}</span></label>`).join("")}</div></fieldset>
+        <div class="acts"><button type="submit" class="btn primary">회차 만들기</button><span class="hint" id="slot-msg"></span></div>
+      </form>
+      <div class="slot-month"><button type="button" class="cal-nav" data-m="-1" aria-label="이전 달">‹</button><b id="slot-ym"></b><button type="button" class="cal-nav" data-m="1" aria-label="다음 달">›</button></div>
+      <div id="slot-list"><p class="loading">회차를 불러오는 중…</p></div>
+    </div>`;
+    const form = ctx.$(".slot-add", panel), listEl = ctx.$("#slot-list", panel), msgEl = ctx.$("#slot-msg", panel);
+    function render() {
+      const [y, mo] = month.split("-").map(Number);
+      ctx.$("#slot-ym", panel).textContent = `${y}년 ${mo}월`;
+      const g = {};
+      slots.forEach(s => { (g[s.date] = g[s.date] || []).push(s); });
+      const days = Object.keys(g).sort();
+      listEl.innerHTML = (msg ? `<p class="err">${esc(msg)}</p>` : "") + (days.map(d => `<section class="slot-day"><h4>${esc(dayLabel(d))}</h4>${g[d].map(s => {
+        const past = s.date < today || (s.date === today && s.time <= nowHM), pct = Math.min(100, Math.round((s.booked / s.capacity) * 100));
+        return `<div class="slot-row${past ? " past" : ""}" data-id="${s.id}">
+          <b>${esc(s.time)}</b>
+          <span>${esc(s.title)} ${s.closed ? '<span class="st canceled">마감</span>' : past ? '<span class="st canceled">지난 회차</span>' : s.remaining ? '<span class="st done">예약 가능</span>' : '<span class="st new">정원 마감</span>'}</span>
+          <span class="cap"><small>예약 <b>${s.booked}</b> / 정원 ${s.capacity} · 남은 자리 ${s.remaining}</small><span class="bar"><i style="width:${pct}%"></i></span></span>
+          <span class="ops">${past ? "" : `<input type="number" min="1" max="500" value="${s.capacity}" aria-label="정원"><button type="button" class="btn" data-op="cap">정원 저장</button>
+            <button type="button" class="btn" data-op="close">${s.closed ? "다시 열기" : "마감"}</button>`}
+            ${s.booked ? "" : `<button type="button" class="link-btn danger" data-op="del">삭제</button>`}</span>
+        </div>`;
+      }).join("")}</section>`).join("") || `<p class="empty">${lines(["이 달에 만든 회차가 없어요.", "위에서 회차를 만들어 주세요."])}</p>`);
+    }
+    const lines = a => ctx.lines(a);
+    async function load() {
+      msg = "";
+      listEl.innerHTML = `<p class="loading">회차를 불러오는 중…</p>`;
+      try { slots = (await api(ctx, `/api/admin/slots?from=${month}-01&to=${lastDay(month)}`)).slots; render(); }
+      catch (err) { listEl.innerHTML = `<div class="notice warn">${esc(err.message)}</div>`; }
+    }
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const f = form.elements, btn = ctx.$('button[type="submit"]', form);
+      const body = { from: f.from.value, to: f.to.value, times: f.times.value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean).map(s => /^\d:\d\d$/.test(s) ? "0" + s : s),
+        capacity: Number(f.capacity.value), title: f.title.value.trim(), weekdays: [...form.querySelectorAll('input[name="wd"]:checked')].map(x => +x.value) };
+      btn.disabled = true; msgEl.textContent = "만드는 중…"; msgEl.className = "hint";
+      try {
+        const r = await api(ctx, "/api/admin/slots", { method: "POST", body });
+        msgEl.textContent = `${r.created}개 만들었어요.${r.skipped ? ` (이미 있던 ${r.skipped}개는 건너뜀)` : ""}`; msgEl.className = "hint ok-msg";
+        month = body.from.slice(0, 7); load();
+      } catch (err) { msgEl.textContent = err.message; msgEl.className = "err"; }
+      finally { btn.disabled = false; }
+    });
+    panel.addEventListener("click", async e => {
+      const nav = e.target.closest(".cal-nav"); if (nav) { month = monthAdd(month, +nav.dataset.m); load(); return; }
+      const b = e.target.closest("[data-op]"); if (!b) return;
+      const row = b.closest(".slot-row"), id = +row.dataset.id, s = slots.find(x => x.id === id);
+      if (b.dataset.op === "del" && !b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "한 번 더 누르면 삭제"; return; }
+      b.disabled = true;
+      try {
+        if (b.dataset.op === "cap") await api(ctx, "/api/admin/slots/" + id, { method: "PATCH", body: { capacity: Number(ctx.$("input", row).value) } });
+        if (b.dataset.op === "close") await api(ctx, "/api/admin/slots/" + id, { method: "PATCH", body: { closed: !s.closed } });
+        if (b.dataset.op === "del") await api(ctx, "/api/admin/slots/" + id, { method: "DELETE" });
+        await load();
+      } catch (err) { b.disabled = false; msg = err.message; render(); }
     });
     load();
   }
@@ -234,19 +334,22 @@
       root.innerHTML = `
         <div class="adm-tabs" role="tablist">
           <button type="button" role="tab" data-tab="inq" aria-selected="true">예약 · 문의${me.newInquiries ? `<span class="badge-n" id="inq-badge">${me.newInquiries}</span>` : `<span class="badge-n" id="inq-badge" hidden></span>`}</button>
+          <button type="button" role="tab" data-tab="slots" aria-selected="false">떡체험 회차</button>
           <button type="button" role="tab" data-tab="menu" aria-selected="false">메뉴 관리</button>
           <button type="button" role="tab" data-tab="members" aria-selected="false">회원 목록</button>
           <span class="adm-who">${esc(me.nickname)} 님 · 관리자</span>
         </div>
         <div data-panel="inq"><p class="loading">예약 · 문의를 불러오는 중…</p></div>
+        <div data-panel="slots" hidden></div>
         <div data-panel="menu" hidden><p class="loading">메뉴를 불러오는 중…</p></div>
         <div data-panel="members" hidden><p class="loading">회원 목록을 불러오는 중…</p></div>`;
 
       /* 탭 · 회원 목록 */
-      let membersLoaded = false;
+      let membersLoaded = false, slotsLoaded = false;
       ctx.$$(".adm-tabs [data-tab]").forEach(b => b.addEventListener("click", async () => {
         ctx.$$(".adm-tabs [data-tab]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
         ctx.$$("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== b.dataset.tab; });
+        if (b.dataset.tab === "slots" && !slotsLoaded) { slotsLoaded = true; loadSlots(ctx); return; }
         if (b.dataset.tab !== "members" || membersLoaded) return;
         const panel = ctx.$('[data-panel="members"]');
         try {
