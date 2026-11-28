@@ -36,6 +36,10 @@
     "providers": ["kakao"]
   },
 
+  "features": {
+    "alimtalk": false
+  },
+
   "privacy": {
     "officer": "조은혜",
     "effective": "2026년 11월 28일"

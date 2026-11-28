@@ -60,6 +60,8 @@
     user: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>`,
     note: `<svg viewBox="0 0 24 24" ${S}><rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 2v4M16 2v4M4 10h16M8 14h3M8 17h6"/></svg>`
   };
+  /* 카카오 알림톡 사용 여부 — data/site.json 의 "features": { "alimtalk": true/false } */
+  const useAlim = () => !!(SITE.features && SITE.features.alimtalk);
   /* 회원 기능 — data/site.json 의 auth.api 에 서버 주소가 있을 때만 켜짐 */
   const apiBase = () => String((SITE.auth && SITE.auth.api) || "").replace(/\/+$/, "");
   const loggedIn = () => { try { return !!localStorage.getItem("hd_token"); } catch { return false; } };
@@ -408,7 +410,7 @@
           <label><input type="checkbox" name="agree"> <span><b>[필수]</b> 개인정보 수집·이용에 동의합니다.</span></label>
           <details><summary>내용 보기</summary><ul>
             <li>수집 항목: 이름, 연락처, 예약 날짜·시간, 인원, 요청 내용</li>
-            <li>이용 목적: 예약 확인 및 연락(카카오 알림톡 포함)</li>
+            <li>이용 목적: 예약 확인 및 연락${useAlim() ? "(카카오 알림톡 포함)" : ""}</li>
             <li>접수 내용은 확인을 위해 대표자 휴대폰(카카오톡·텔레그램)으로 전달되며, 해외 서버(Cloudflare·Telegram)를 거칩니다. <a href="privacy.html" target="_blank" rel="noopener">자세히</a></li>
             <li>보유 기간: 처리 완료 후 1년 (이후 자동 삭제)</li>
             <li>동의하지 않으셔도 되며, 이 경우 전화(${esc(SITE.store.tel)})로 예약하실 수 있어요.</li>
@@ -582,7 +584,7 @@
         <li>서비스 이용 과정에서 자동 생성: 가입·로그인 일시, 예약·문의 접수 일시, 스팸 방지를 위한 접속 정보의 암호화 값</li>
         <li>혜화담은 이메일, 비밀번호를 받지 않습니다.</li></ul>
       <h2>2. 이용 목적</h2>
-      <ul><li>회원 식별과 로그인 유지</li><li>회원 관리(가입·탈퇴 처리)</li><li>예약·문의 확인 및 연락(예약 접수·확정·취소 카카오 알림톡 발송 포함)</li></ul>
+      <ul><li>회원 식별과 로그인 유지</li><li>회원 관리(가입·탈퇴 처리)</li><li>예약·문의 확인 및 연락${useAlim() ? "(예약 접수·확정·취소 카카오 알림톡 발송 포함)" : ""}</li></ul>
       <h2>3. 보유 및 이용 기간</h2>
       <ul><li>회원 정보: 회원 탈퇴 시까지 보관하며, 탈퇴하면 지체 없이 삭제합니다. 탈퇴는 [내 정보] 화면의 '회원 탈퇴'에서 언제든 할 수 있습니다.</li>
         <li>예약·문의 정보: 처리(완료·취소)한 날로부터 1년이 지나면 자동으로 삭제합니다. 그 전에 삭제를 원하시면 전화로 요청해 주세요.</li></ul>
@@ -590,8 +592,8 @@
       <p>혜화담은 회원의 개인정보를 제3자에게 제공하지 않습니다.</p>
       <h2>5. 처리 위탁 및 국외 이전</h2>
       <p><b>① 국내 처리 위탁</b></p>
-      <ul><li>주식회사 카카오 — 카카오 로그인, 새 예약·문의 내용을 대표자 카카오톡('나에게 보내기')으로 전달, 카카오 알림톡 전달</li>
-        <li>솔라피(SOLAPI) — 예약 접수·확정·취소 카카오 알림톡 및 문자 발송 (알림톡을 사용하는 경우)</li>
+      <ul><li>주식회사 카카오 — 카카오 로그인, 새 예약·문의 내용을 대표자 카카오톡('나에게 보내기')으로 전달${useAlim() ? ", 카카오 알림톡 전달" : ""}</li>
+        ${useAlim() ? "<li>솔라피(SOLAPI) — 예약 접수·확정·취소 카카오 알림톡 및 문자 발송</li>" : ""}
         <li>제공 항목: 이름, 연락처, 예약 메뉴·일시·인원, 요청 내용</li></ul>
       <p><b>② 국외 이전</b> — 「개인정보 보호법」 제28조의8에 따라 아래와 같이 알려 드립니다.</p>
       <ul><li>이전받는 자: Cloudflare, Inc. (미국)</li><li>이전 목적: 회원 정보·예약·문의 정보 저장 및 서버 운영</li>

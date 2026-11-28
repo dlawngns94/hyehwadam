@@ -271,7 +271,7 @@
     const telHref = t => "tel:" + String(t || "").replace(/[^0-9+]/g, "");
     const alimBar = () => {
       if (!alim) return "";
-      if (!alim.ready) return `<div class="alim-bar">카카오 알림톡이 아직 연결되지 않았어요. 연결하면 새 예약은 사장님께, 확정·취소는 손님께 자동으로 알림이 가요. (설정 안내서 참고)</div>`;
+      if (!alim.ready) return ""; /* 알림톡은 지금 사용하지 않음 (닫아 둠) */
       const miss = [!alim.owner && "사장님 번호(OWNER_PHONE)", !alim.templates.new && "새 예약 템플릿", !alim.templates.confirm && "확정 템플릿", !alim.templates.cancel && "취소 템플릿"].filter(Boolean);
       return `<div class="alim-bar on">카카오 알림톡 연결됨${miss.length ? ` · 아직 설정 안 된 것: ${miss.join(", ")}` : " · 새 예약은 사장님께, 확정·취소는 손님께 자동 발송돼요."}</div>`;
     };
