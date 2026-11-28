@@ -49,12 +49,15 @@
       const btn = p => ctx.API
         ? `<a class="sns ${p}" data-p="${p}" href="${ctx.esc(ctx.API)}/auth/${p}/start?next=${next}${relogin.get() ? "&relogin=1" : ""}">${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></a>`
         : `<button type="button" class="sns ${p}" data-soon>${LOGO[p]}<span>${PROVIDER[p]} 로그인</span></button>`;
+      /* 켜 둔 로그인 방식만 보여 줌 — data/site.json 의 "auth": { "providers": ["kakao", "naver"] } */
+      const provs = ((ctx.SITE.auth && ctx.SITE.auth.providers) || ["kakao", "naver"]).filter(p => PROVIDER[p]);
+      const names = provs.map(p => PROVIDER[p]).join(" 또는 ");
       return ctx.subTop("로그인", [{ name: "로그인" }]) + `<div class="wrap"><div class="auth-box">
         <h2>혜화담 회원 로그인</h2>
-        <p class="auth-sub">${ctx.lines(["카카오 또는 네이버 계정으로", "간편하게 로그인하세요."])}</p>
+        <p class="auth-sub">${ctx.lines([`${names} 계정으로`, "간편하게 로그인하세요."])}</p>
         <div id="auth-msg"></div>
-        <div class="sns-list">${btn("kakao")}${btn("naver")}</div>
-        ${ctx.API ? `<p class="switch-acc"><button type="button" class="link-btn" id="switch-acc"${relogin.get() ? " hidden" : ""}>다른 계정으로 로그인하기</button><span id="switch-on"${relogin.get() ? "" : " hidden"}>카카오·네이버 로그인 화면에서 계정을 다시 고를 수 있어요.</span></p>` : ""}
+        <div class="sns-list">${provs.map(btn).join("")}</div>
+        ${ctx.API ? `<p class="switch-acc"><button type="button" class="link-btn" id="switch-acc"${relogin.get() ? " hidden" : ""}>다른 계정으로 로그인하기</button><span id="switch-on"${relogin.get() ? "" : " hidden"}>${names} 로그인 화면에서 계정을 다시 고를 수 있어요.</span></p>` : ""}
         <p class="fine">${ctx.lines(["혜화담은 회원 확인을 위해 닉네임과 회원번호만 저장합니다.", "로그인하면 개인정보처리방침에 동의하는 것으로 봅니다."])}<a href="privacy.html">개인정보처리방침 보기</a></p>
       </div></div>`;
     },

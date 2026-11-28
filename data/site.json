@@ -32,12 +32,13 @@
   },
 
   "auth": {
-    "api": "https://hyehwadam-api.929929.workers.dev"
+    "api": "https://hyehwadam-api.929929.workers.dev",
+    "providers": ["kakao"]
   },
 
   "privacy": {
     "officer": "조은혜",
-    "effective": "2026년 11월 25일"
+    "effective": "2026년 11월 28일"
   },
 
   "categories": [
